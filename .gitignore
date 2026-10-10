@@ -1,0 +1,36 @@
+# Dependencies and build outputs
+node_modules/
+dist/
+target/
+src-tauri/gen/
+*.tsbuildinfo
+*.log
+
+# Local data and recordings
+data/
+recordings/
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+
+# Environment and credentials
+.env
+.env.*
+!.env.example
+credentials/
+secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+.aws/
+
+# Local editor and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini
