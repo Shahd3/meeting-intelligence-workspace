@@ -34,3 +34,9 @@ secrets/
 .DS_Store
 Thumbs.db
 Desktop.ini
+# Private captured audio (including interrupted capture/recovery files)
+*.wav
+*.wav.part
+*.pcm
+*.recovered.wav
+*.wav.recovery.tmp

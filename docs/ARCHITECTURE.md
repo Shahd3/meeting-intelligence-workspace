@@ -1,6 +1,6 @@
 # Architecture Overview
 
-Status: Proposed for review. No application functionality is implemented by this document.
+Status: Proposed intelligence architecture, with an implemented desktop and recording foundation. See the implementation boundary below; future processing behavior is not implemented by this document.
 
 ## Requirements and decision labels
 
@@ -9,7 +9,7 @@ Status: Proposed for review. No application functionality is implemented by this
 - **Assumption:** planning premise that needs confirmation.
 - **Future possibility:** optional direction outside the initial commitment.
 
-The [product scope](PRODUCT_SCOPE.md) defines delivery boundaries. [ADR 0001](adr/0001-initial-architecture.md) explains the stack proposal; [ADR 0002](adr/0002-durable-meeting-processing.md) specifies the durable processing proposal. These documents describe intended behavior, not verified application implementation.
+The [product scope](PRODUCT_SCOPE.md) defines delivery boundaries. [ADR 0001](adr/0001-initial-architecture.md) explains the stack proposal; [ADR 0002](adr/0002-durable-meeting-processing.md) specifies the durable processing proposal. The ADRs describe intended intelligence processing behavior. The implemented foundation is described separately below.
 
 ## Goals and initial scope
 
@@ -23,10 +23,10 @@ The [product scope](PRODUCT_SCOPE.md) defines delivery boundaries. [ADR 0001](ad
 
 | Layer | Proposal | Boundary or unresolved detail |
 | --- | --- | --- |
-| User interface | React and TypeScript | Component UI and typed contracts; styling and build tooling remain undecided. |
-| Desktop host | Tauri with a Rust core | Windows integration and privileged commands; audio backend and plugins need validation. |
-| Structured persistence | SQLite | Meetings, projects, transcripts, outputs, provenance, and job state; schema and access library remain undecided. |
-| Recording storage | App-managed local files | SQLite stores references; encoding, storage location, retention, and backup policy remain undecided. |
+| User interface | React and TypeScript | React/TypeScript with Vite and the approved custom UI are implemented. |
+| Desktop host | Tauri with a Rust core | Tauri 2 and Rust are implemented; Rust owns Windows WASAPI capture. |
+| Structured persistence | SQLite | Meetings/workspaces and recording metadata use Rust rusqlite repositories with migrations; transcripts, outputs, provenance, and jobs remain future schemas. |
+| Recording storage | App-managed local files | Implemented: separate PCM16 48 kHz stereo WAV tracks in per-user local app storage, referenced by SQLite. Retention settings and backup policy remain undecided. |
 | AI services | Provider-independent transcription and generation adapters | Provider, models, hosting, and network requirements remain undecided. |
 | Retrieval | Project-scoped transcript retrieval | Evaluate lexical retrieval first; embeddings and vector storage are not selected. |
 | Optional AI runtime | Python only if a selected engine needs it | No required Python service or sidecar in this proposal. |
@@ -43,7 +43,7 @@ These are logical modules in one desktop product, not independently deployed mic
 | Desktop adapters | Windows audio/device access, app data paths, file operations, credential access, and Tauri command validation. Expose only necessary capabilities. |
 | Application workflows | Coordinate recording finalization, processing, retries, project membership, and question requests through explicit use cases. |
 | Meeting and project domain | Stable IDs, meeting metadata, logical project membership, transcript/output associations, and lifecycle rules. No dependency on Tauri or UI components. |
-| Recording service | Coordinate capture through an audio adapter; finalize playable artifacts and report interruptions. Capture backend is unresolved. |
+| Recording service | Coordinate capture through an audio adapter; finalize playable artifacts and report interruptions. Windows WASAPI capture is implemented; processing adapters remain independent. |
 | Intelligence services | Independent transcription and generation adapters; summary, structured action/decision extraction, retrieval, and evidence-grounded answering. Avoid desktop path and widget dependencies. |
 | Persistence adapters | SQLite repositories and recording-file storage; migrations, consistency checks, and artifact cleanup. |
 | Jobs and diagnostics | Backend-owned worker, durable claims, stage checkpoints, bounded retries, recovery, safe status reporting, and idempotent persistence. Avoid sensitive transcript or credential logging. |
@@ -58,13 +58,19 @@ flowchart TD
     WF --> REPO[Persistence interfaces]
     WORKER[Backend-owned job worker] --> WF
     WORKER --> REPO
-    DESKTOP --> AUDIO[Audio capture backend - undecided]
+    DESKTOP --> AUDIO[Windows WASAPI audio capture]
     REPO --> DB[(SQLite)]
     REPO --> FILES[Local recording files]
     INTEL --> PROVIDER[AI adapters - local or hosted undecided]
 ```
 
 **Proposed separation:** Keep provider calls and secrets behind the privileged boundary, and keep the UI focused on presentation. IPC and provider responses need runtime validation; TypeScript compile-time checks do not validate external data. Domain and intelligence modules depend on contracts for repositories, AI capabilities, jobs, and artifact access, rather than the desktop shell. The concrete orchestration runtime must be chosen before implementation; do not assume Node.js ships with Tauri.
+
+## Implemented recording foundation
+
+Issue #3 implements Rust-owned microphone and Windows output loopback capture, endpoint selection and Windows format conversion, pause/resume with an active clock, separate timestamp-aligned WAV tracks, periodic synchronization, SQLite capture/track checkpoints, recoverable finalization, idempotent meeting registration, startup/manual recovery, and ID-scoped playback. UI navigation does not own capture; normal window close is blocked while active. Workspace deletion never deletes recordings. Detailed contracts, validation results, and limitations are in [Windows recording](WINDOWS_RECORDING.md).
+
+This foundation does **not** implement a transcription queue, AI calls, transcripts, generated artifacts, retrieval, or automatic retention. Real recorded meetings begin with empty intelligence fields. Python remains optional. The proposed processing flow below describes the next integration boundary, not current execution.
 
 ## Recording to transcription and summarization
 

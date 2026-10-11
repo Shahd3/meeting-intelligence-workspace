@@ -26,6 +26,7 @@ fn meeting(project: i64) -> Meeting {
         decision: "Decision".into(),
         actions: vec!["Review".into()],
         speakers: vec!["Test".into()],
+        recorded: false,
     }
 }
 fn memory() -> Connection {
@@ -240,7 +241,7 @@ fn future_schema_is_rejected_without_resetting_data() {
             },
         )
         .unwrap();
-        db.execute_batch("PRAGMA user_version=2").unwrap();
+        db.execute_batch("PRAGMA user_version=3").unwrap();
     }
     assert!(open(&path).is_err());
     {
@@ -253,7 +254,7 @@ fn future_schema_is_rejected_without_resetting_data() {
         assert_eq!(
             db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
                 .unwrap(),
-            2
+            3
         );
     }
     std::fs::remove_file(path).unwrap();

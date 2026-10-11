@@ -4,7 +4,7 @@ export type Workspace = {
   overview: string; decision?: string | null; task: string; owner: string; due: string;
 };
 export type Meeting = {
-  id: number; title: string; project: number; date: string; duration: string;
+  recorded?: boolean; id: number; title: string; project: number; date: string; duration: string;
   summary: string; highlights: string[]; decision: string; actions: string[]; speakers: string[];
 };
 export type Completion = Record<string, boolean>;

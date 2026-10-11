@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { dataRequest, type DataRequest, type Snapshot } from "./repository";
 
-const empty: Snapshot = { meetings: [], workspaces: [], completed: {} };
+const empty: Snapshot = { meetings: [], workspaces: [], completed: {}, recordings: [] };
 export function useLocalData() {
   const [data, setData] = useState(empty);
   const [ready, setReady] = useState(false);
