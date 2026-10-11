@@ -1,6 +1,6 @@
 # Meeting Intelligence Workspace
 
-An independent Windows desktop application foundation using React, TypeScript, Vite, Tauri 2, and Rust. Dashboard, Meetings, Projects, and Settings currently contain placeholders. Recording, AI processing, persistence, and project intelligence are not implemented.
+An independent Windows desktop application using React, TypeScript, Vite, Tauri 2, and Rust. The approved gather UI includes Home, Note Taker, Workspaces, meeting details, and a project assistant. Recording, summaries, and assistant answers are simulated; changes remain in memory for the current session. No microphone, AI provider, or database is connected.
 
 ## Windows setup
 
@@ -33,8 +33,9 @@ Frontend output is written to `dist/`; Rust output is under `src-tauri/target/`.
 src/
   app/          Application composition and navigation
   components/   Shared presentation components
-  pages/        Four placeholder pages
-  styles/       Shared CSS
+  pages/        Main views and meeting/workspace details
+  data/         Typed mock fixtures and simulation helpers
+  styles/       Approved visual design and responsive CSS
 src-tauri/
   src/          Rust desktop entry points
   tauri.conf.json
