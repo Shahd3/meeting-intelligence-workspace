@@ -7,7 +7,7 @@ src-tauri/gen/
 *.log
 
 # Local data and recordings
-data/
+/data/
 recordings/
 *.db
 *.db-*
