@@ -16,6 +16,6 @@ export function NoteTakerPage({ meetings, workspaces, query, filter, onQuery, on
       const workspace = workspaces.find(item => item.id === meeting.project);
       return <button className="card" key={meeting.id} onClick={() => onMeeting(meeting.id)}><span className="card-top"><span className={`badge ${workspace?.color || "sage"}`} aria-hidden="true">▤</span><span className="tag sage">✓ Ready</span></span><span className="card-title">{meeting.title}</span><small>{meeting.date} / {meeting.duration}</small><span className="card-bottom"><span className={`tag ${workspace?.color || ""}`}>{workspace?.name || "Unassigned"}</span><span aria-hidden="true">↗</span></span></button>;
     })}</div>
-    {!matches.length && <div className="empty">No matching conversations. Try another search.</div>}
+    {!matches.length && <div className="empty">{meetings.length ? "No matching conversations. Try another search or workspace." : "No conversations yet. Create a simulated recording to save your first meeting."}</div>}
   </>;
 }

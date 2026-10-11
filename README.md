@@ -1,6 +1,6 @@
 # Meeting Intelligence Workspace
 
-An independent Windows desktop application using React, TypeScript, Vite, Tauri 2, and Rust. The approved gather UI includes Home, Note Taker, Workspaces, meeting details, and a project assistant. Recording, summaries, and assistant answers are simulated; changes remain in memory for the current session. No microphone, AI provider, or database is connected.
+An independent Windows desktop application using React, TypeScript, Vite, Tauri 2, and Rust. The approved gather UI includes Home, Note Taker, Workspaces, meeting details, and a project assistant. Meetings, workspaces, assignment, and task completion are persisted in local SQLite. Recording, summaries, and assistant answers remain simulated; assistant conversations last for the current session. No microphone or AI provider is connected.
 
 ## Windows setup
 
@@ -13,7 +13,7 @@ npm install
 npm run desktop:dev
 ```
 
-The desktop command starts Vite and opens the native window. Close the window and stop the terminal command with Ctrl+C when finished. For frontend-only work, use `npm run dev`; no desktop APIs are required by the presentation components. If PowerShell blocks npm.ps1, use `npm.cmd` instead of changing execution policy.
+The desktop command starts Vite and opens the native window. Close the window and stop the terminal command with Ctrl+C when finished. `npm run dev` renders the frontend in a browser, but persistence requires the desktop host and displays a clear unavailable message there. If PowerShell blocks npm.ps1, use `npm.cmd` instead of changing execution policy.
 
 ## Checks and builds
 
@@ -21,6 +21,7 @@ The desktop command starts Vite and opens the native window. Close the window an
 npm run typecheck
 npm run build
 cargo check --manifest-path src-tauri/Cargo.toml
+cargo test --manifest-path src-tauri/Cargo.toml --lib
 cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 npm run desktop:build
 ```
@@ -34,14 +35,17 @@ src/
   app/          Application composition and navigation
   components/   Shared presentation components
   pages/        Main views and meeting/workspace details
-  data/         Typed mock fixtures and simulation helpers
+  data/         Types, desktop repository adapter, local state, simulations
   styles/       Approved visual design and responsive CSS
 src-tauri/
-  src/          Rust desktop entry points
+  src/          Rust entry points and SQLite repositories/tests
+  migrations/   Versioned SQLite schema
   tauri.conf.json
 docs/           Architecture, decisions, and product scope
 ```
 
-React presentation imports no desktop APIs. Privileged desktop integration belongs in `src-tauri`; future frontend adapters should remain separate from presentation components. No native commands or plugin permissions are added yet. Local data, environment files, and credential files are ignored; dependency lockfiles belong in source control.
+React presentation imports no desktop APIs. The dedicated repository adapter invokes a narrow Rust command; the frontend cannot submit SQL or database paths. Local data, environment files, and credential files are ignored; dependency lockfiles belong in source control.
+
+The database starts empty at `%APPDATA%/dev.meetingintelligence.workspace/workspace.sqlite3` (resolved by Tauri). Create a workspace, then save a simulated recording to add a meeting. Edit/delete controls are on detail screens. Deleting a workspace unassigns its meetings; no operation deletes recording files. See [Local data implementation](docs/LOCAL_DATA.md) for schema, migration, and persistence details.
 
 See [Architecture](docs/ARCHITECTURE.md), [Product scope](docs/PRODUCT_SCOPE.md), and [Durable processing proposal](docs/adr/0002-durable-meeting-processing.md) for the future direction.
