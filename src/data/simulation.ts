@@ -6,7 +6,7 @@ export function formatTime(seconds: number) {
 
 export function createDemoMeeting(id: number, title: string, project: number, seconds: number): Meeting {
   return {
-    id, title, project, date: "Oct 10, 2026", duration: formatTime(seconds),
+    id, title, project, date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }), duration: formatTime(seconds),
     summary: "The team reviewed progress, clarified priorities, and agreed to share an updated plan before the next check-in. This is a sample summary of the simulated recording.",
     highlights: ["Reviewed project progress.", "Clarified priorities and assigned an owner.", "Agreed to circulate the updated plan."],
     decision: "Share the updated project plan before the next check-in.",
@@ -26,8 +26,6 @@ export function simulateAnswer(question: string, workspace: Workspace, meetings:
   if (/chang|between/i.test(question)) return meetings.length > 1
     ? `Earlier, the team agreed: ${meetings[meetings.length - 1].decision} The latest conversation moved this forward: ${latest.decision}`
     : `There is one conversation so far, so a comparison is not available yet. The current agreement is: ${latest.decision}`;
-  if (/timeline|when|date/i.test(question)) return workspace.id === 2
-    ? "The core release is planned for October 22. Advanced integrations follow in November. The launch checklist is due October 12."
-    : `The next milestone is ${workspace.task || latest.actions[0]}, targeted for ${workspace.due}. No final completion date was agreed in these sample notes.`;
+  if (/timeline|when|date/i.test(question)) return `The latest conversation was ${latest.title} on ${latest.date}. No verified project deadline is available in this simulation.`;
   return `For ${workspace.name}, the latest agreement is: ${latest.decision} ${latest.summary}`;
 }

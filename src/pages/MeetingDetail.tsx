@@ -2,13 +2,15 @@ import type { Completion, Meeting, MeetingTab, Workspace } from "../data/types";
 
 const tabs: MeetingTab[] = ["Summary", "Highlights", "Decisions", "Action items", "Transcript"];
 
-export function MeetingDetail({ meeting, workspaces, tab, completed, onTab, onBack, onAssign, onWorkspace, onComplete }: {
+export function MeetingDetail({ meeting, workspaces, tab, completed, onTab, onBack, onAssign, onWorkspace, onComplete, onEdit, onDelete }: {
   meeting: Meeting; workspaces: Workspace[]; tab: MeetingTab; completed: Completion; onTab: (tab: MeetingTab) => void;
   onBack: () => void; onAssign: (project: number) => void; onWorkspace: (id: number) => void; onComplete: (key: string, value: boolean) => void;
+  onEdit: () => void; onDelete: () => void;
 }) {
   const workspace = workspaces.find(item => item.id === meeting.project);
   return <>
     <div className="detail-heading"><button className="circle" onClick={onBack} aria-label="Back">←</button><div><span className="eyebrow">MEETING NOTEBOOK / CONVERSATION</span><h1>{meeting.title}</h1></div></div>
+    <div className="record-actions"><button className="pill" onClick={onEdit}>Edit meeting</button><button className="text" onClick={onDelete}>Delete meeting</button></div>
     <div className="meeting-meta"><span className="pill">{meeting.date} · {meeting.duration}</span><span className="tag sage">✓ Summary ready</span><select className="select" aria-label="Assign meeting to workspace" value={meeting.project} onChange={event => onAssign(Number(event.target.value))}><option value="0">Unassigned</option>{workspaces.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>{workspace && <button className="text" onClick={() => onWorkspace(workspace.id)}>Open workspace ↗</button>}</div>
     <div className="tabs" role="tablist" aria-label="Meeting details">{tabs.map((item, index) => <button key={item} id={`meeting-tab-${index}`} role="tab" aria-selected={tab === item} aria-controls="meeting-tab-panel" tabIndex={tab === item ? 0 : -1} className={`tab ${tab === item ? "active" : ""}`} onClick={() => onTab(item)} onKeyDown={event => {
       let next = index;

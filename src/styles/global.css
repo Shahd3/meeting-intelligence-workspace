@@ -1416,3 +1416,11 @@ h1[tabindex]:focus {
   height:31px;
   animation-delay:-5.07s
 }
+
+/* Persistent data controls reuse the approved visual language. */
+.record-actions { display:flex; gap:18px; align-items:center; margin:0 0 18px; }
+.dialog-fields { border:0; padding:0; margin:0; min-width:0; }
+.storage-busy { position:fixed; bottom:20px; right:24px; z-index:1100; background:#e1e9d1; padding:12px 20px; border-radius:18px; box-shadow:0 8px 30px #0001; }
+.storage-error { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); z-index:1200; width:min(540px,90vw); background:#f4d9d6; padding:18px; border-radius:20px; box-shadow:0 8px 30px #0002; }
+.storage-error p { margin:0 0 12px; }
+.dashboard .insight p { overflow:auto; overflow-wrap:anywhere; min-height:0; }
