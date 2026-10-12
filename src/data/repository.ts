@@ -1,7 +1,8 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import type { Recording } from "./recording";
 import type { Completion, Meeting, Workspace } from "./types";
 
-export type Snapshot = { meetings: Meeting[]; workspaces: Workspace[]; completed: Completion };
+export type Snapshot = { meetings: Meeting[]; workspaces: Workspace[]; completed: Completion; recordings: Recording[] };
 export type DataRequest =
   | { kind: "load" }
   | { kind: "create_workspace" | "update_workspace"; workspace: Workspace }

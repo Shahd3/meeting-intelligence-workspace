@@ -1424,3 +1424,53 @@ h1[tabindex]:focus {
 .storage-error { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); z-index:1200; width:min(540px,90vw); background:#f4d9d6; padding:18px; border-radius:20px; box-shadow:0 8px 30px #0002; }
 .storage-error p { margin:0 0 12px; }
 .dashboard .insight p { overflow:auto; overflow-wrap:anywhere; min-height:0; }
+/* Native capture controls use the approved palette and existing card structure. */
+.audio-sources { border: 0; padding: 16px 0; margin: 0; text-align: left; min-width: 0; }
+.source-toggle { display: flex; align-items: center; gap: 10px; margin: 16px 0 8px; font-weight: 600; }
+.source-toggle input { accent-color: var(--ink, #34342c); }
+.recording-controls { flex-wrap: wrap; justify-content: center; }
+.recording-error, .recording-warning { border-radius: 16px; padding: 12px 16px; background: #fff0dc; color: #684321; overflow-wrap: anywhere; }
+.recording-error { background: #ffe9e8; color: #833c3c; }
+.recording-playback { margin: 20px 0; }
+.audio-track { display: grid; gap: 8px; margin: 16px 0; overflow-wrap: anywhere; }
+.audio-track audio { width: 100%; max-width: 100%; }
+.recording-banner { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 30; background: #fff0dc; border: 1px solid #e3ccb1; box-shadow: 0 10px 32px #34342c18; border-radius: 24px; padding: 12px 18px; display: flex; align-items: center; gap: 16px; max-width: calc(100vw - 32px); }
+@media (max-width: 700px) { .recording-banner { width: calc(100vw - 32px); gap: 8px; font-size: 13px; } .recording-banner .pill { padding: 8px 10px; } }
+.recording-banner-warning { display: block; max-width: 420px; } .recording-alert { position: fixed; bottom: 24px; right: 24px; z-index: 25; max-width: min(440px, calc(100vw - 48px)); border-radius: 20px; padding: 16px; background: #ffe9e8; box-shadow: 0 10px 32px #34342c18; }
+
+/* New-session settings share the existing pastel surfaces; active capture stays unchanged. */
+.record-setup .timer { font-size: 48px; margin: 18px 0; }
+.audio-summary { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
+.audio-summary > span { display: flex; gap: 10px; align-items: center; background: #f5f3ee; padding: 9px 13px; border-radius: 14px; font-size: 13px; }
+.audio-summary strong { font-size: 11px; color: #697563; }
+.audio-settings { padding: 14px 16px; border: 1px solid var(--line); border-radius: 16px; }
+.audio-settings summary { cursor: pointer; font-weight: 600; font-size: 13px; }
+.audio-settings .muted { font-size: 12px; line-height: 1.6; }
+.recovery-notice { margin: 18px 0; padding: 16px; border-radius: 16px; background: #fff4df; color: #70562c; }
+/* Shared native widget: logical sizing scales with Windows display settings. */
+body.widget-window { background: var(--cream); overflow: hidden; }
+.floating-widget { height: 100vh; padding: 16px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--cream); overflow-y: auto; }
+.widget-drag { display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: grab; user-select: none; padding-bottom: 12px; }
+.widget-brand { font-size: 19px; letter-spacing: -1px; }
+.widget-brand > span { margin-left: 4px; color: #7f8972; }
+.widget-indicator { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border-radius: 30px; font-size: 11px; background: var(--pink); }
+.widget-indicator i { width: 6px; height: 6px; border-radius: 50%; background: #a25561; }
+.widget-indicator.suggestion { background: var(--sage); }
+.widget-indicator.paused { background: var(--yellow); }
+.widget-timer { font-size: 40px; font-weight: 350; letter-spacing: -2px; margin: 2px 0 12px; font-variant-numeric: tabular-nums; }
+.widget-suggestion h1 { font-size: 20px; line-height: 1.3; letter-spacing: -.5px; margin-bottom: 8px; }
+.widget-suggestion .muted { font-size: 11px; }
+.widget-evidence { color: var(--muted); font-size: 11px; line-height: 1.45; margin: 8px 0; }
+.widget-actions { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.widget-actions button, .widget-capture > .dark { padding: 10px 15px; font-size: 12px; }
+.widget-error { font-size: 11px; line-height: 1.4; color: #8a3e49; margin-top: 9px; }
+.floating-widget.compact { padding: 12px 14px; }
+.floating-widget.compact .widget-drag { padding-bottom: 6px; line-height: 1.2; }
+.floating-widget.compact .widget-brand { font-size: 17px; }
+.floating-widget.compact .widget-timer { font-size: 32px; line-height: 1.15; margin: 2px 0 8px; }
+.floating-widget.compact .widget-actions { margin-top: 8px; }
+.floating-widget.compact .widget-actions button { padding: 8px 13px; line-height: 1.3; }
+.preference-toggle { display: flex; align-items: center; justify-content: space-between; gap: 24px; border: 1px solid var(--line); background: var(--sage); border-radius: 16px; padding: 18px; margin: 18px 0; }
+.preference-toggle small { display: block; margin-top: 5px; }
+.preference-toggle input { width: 20px; height: 20px; accent-color: #6d7a5e; }
+.recording-preferences > .muted { font-size: 13px; line-height: 1.7; margin-top: 14px; }

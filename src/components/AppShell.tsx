@@ -7,8 +7,8 @@ const navigation: { page: Page; label: string; symbol: string }[] = [
   { page: "spaces", label: "Workspaces", symbol: "▦" },
 ];
 
-export function AppShell({ page, dashboard, onNavigate, onAbout, children }: {
-  page: Page; dashboard: boolean; onNavigate: (page: Page) => void; onAbout: () => void; children: ReactNode;
+export function AppShell({ page, dashboard, onNavigate, onAbout, onSettings, children }: {
+  page: Page; dashboard: boolean; onNavigate: (page: Page) => void; onAbout: () => void; onSettings: () => void; children: ReactNode;
 }) {
   return <div className={dashboard ? "app dashboard" : "app"}>
     <aside>
@@ -25,7 +25,7 @@ export function AppShell({ page, dashboard, onNavigate, onAbout, children }: {
     </aside>
     <main className="content">
       <header className="topbar"><span className="eyebrow">YOUR SPACE TO THINK CLEARLY</span>
-        <div className="topright"><span className="pill date-pill">◷ &nbsp; Saturday, October 10</span><button className="circle" onClick={onAbout} aria-label="About this demo">?</button><span className="avatar sage" aria-hidden="true">SA</span></div>
+        <div className="topright"><span className="pill date-pill">◷ &nbsp; Saturday, October 10</span><button className="circle" onClick={onSettings} aria-label="Recording preferences">⚙</button><button className="circle" onClick={onAbout} aria-label="About this demo">?</button><span className="avatar sage" aria-hidden="true">SA</span></div>
       </header>
       <div id="view">{children}</div>
     </main>

@@ -1,6 +1,6 @@
 # Meeting Intelligence Workspace
 
-An independent Windows desktop application using React, TypeScript, Vite, Tauri 2, and Rust. The approved gather UI includes Home, Note Taker, Workspaces, meeting details, and a project assistant. Meetings, workspaces, assignment, and task completion are persisted in local SQLite. Recording, summaries, and assistant answers remain simulated; assistant conversations last for the current session. No microphone or AI provider is connected.
+An independent Windows desktop application using React, TypeScript, Vite, Tauri 2, and Rust. The approved gather UI includes Home, Note Taker, Workspaces, meeting details, and a project assistant. Meetings, workspaces, assignment, and task completion are persisted in local SQLite. Windows microphone and system-audio recording, pause/resume, durable WAV storage, recovery, and playback are implemented. AI processing is not connected; older illustrative notes and the explicitly simulated assistant remain available. Assistant conversations last for the current session.
 
 ## Windows setup
 
@@ -13,7 +13,7 @@ npm install
 npm run desktop:dev
 ```
 
-The desktop command starts Vite and opens the native window. Close the window and stop the terminal command with Ctrl+C when finished. `npm run dev` renders the frontend in a browser, but persistence requires the desktop host and displays a clear unavailable message there. If PowerShell blocks npm.ps1, use `npm.cmd` instead of changing execution policy.
+The desktop command starts Vite and opens the native window. Stop any active recording, close the window, and stop the terminal command with Ctrl+C when finished. Normal window closure is blocked while capture or finalization is active. Forced exit preserves available partial audio for startup recovery. `npm run dev` renders the frontend in a browser, but persistence requires the desktop host and displays a clear unavailable message there. If PowerShell blocks npm.ps1, use `npm.cmd` instead of changing execution policy.
 
 ## Checks and builds
 
@@ -38,7 +38,7 @@ src/
   data/         Types, desktop repository adapter, local state, simulations
   styles/       Approved visual design and responsive CSS
 src-tauri/
-  src/          Rust entry points and SQLite repositories/tests
+  src/          Rust entry points, SQLite repositories, and recording/ WASAPI service/tests
   migrations/   Versioned SQLite schema
   tauri.conf.json
 docs/           Architecture, decisions, and product scope
@@ -46,6 +46,14 @@ docs/           Architecture, decisions, and product scope
 
 React presentation imports no desktop APIs. The dedicated repository adapter invokes a narrow Rust command; the frontend cannot submit SQL or database paths. Local data, environment files, and credential files are ignored; dependency lockfiles belong in source control.
 
-The database starts empty at `%APPDATA%/dev.meetingintelligence.workspace/workspace.sqlite3` (resolved by Tauri). Create a workspace, then save a simulated recording to add a meeting. Edit/delete controls are on detail screens. Deleting a workspace unassigns its meetings; no operation deletes recording files. See [Local data implementation](docs/LOCAL_DATA.md) for schema, migration, and persistence details.
+The database starts empty at `%APPDATA%/dev.meetingintelligence.workspace/workspace.sqlite3` (resolved by Tauri). Create a workspace, then start a recording from Home or Note Taker. Each New Recording opens with an empty title and zero timer, unless capture is already active. Enter a title; Audio Settings lets you enable sources and choose devices (Windows defaults are recommended). Start, pause/resume if needed, then Stop & Save. Successful saving refreshes the meeting list and returns directly to Note Taker. Recovery appears contextually when retained audio needs attention. Review the saved meeting to assign it to a workspace and play each track. No transcript or summary is generated. Audio is stored separately under Tauri app_local_data_dir()/recordings (normally %LOCALAPPDATA%/dev.meetingintelligence.workspace/recordings), never in SQLite. Edit/delete controls are on detail screens. Deleting a workspace unassigns its meetings; no operation deletes recording files. See [Local data implementation](docs/LOCAL_DATA.md) for schema, migration, and persistence details.
+
+See [Windows recording implementation and limitations](docs/WINDOWS_RECORDING.md) for recovery, audio device requirements, storage size, and manual validation. Captured audio is retained indefinitely; automatic retention and encryption are not implemented. Windows desktop microphone permissions must already allow capture; the app does not change system settings.
 
 See [Architecture](docs/ARCHITECTURE.md), [Product scope](docs/PRODUCT_SCOPE.md), and [Durable processing proposal](docs/adr/0002-durable-meeting-processing.md) for the future direction.
+
+## Floating recording controls and optional meeting suggestions
+
+During capture, a compact draggable widget stays above ordinary desktop windows, including while the main app is minimized. Pause/Resume and Stop & Save control the existing Rust recording session. Saving hides the widget; errors retain access to recovery.
+
+Use the gear button → Recording preferences to opt into local automatic meeting detection (disabled initially). Likely Teams, Zoom, or Google Meet calls can trigger a suggestion. Start Recording opens setup for your title and audio choices; capture always requires your confirmation. Detection reads window identity and existing microphone-session metadata, never microphone audio. See [Desktop widget and detection](docs/DESKTOP_WIDGET.md) for signal limitations, privacy boundaries, and validation.

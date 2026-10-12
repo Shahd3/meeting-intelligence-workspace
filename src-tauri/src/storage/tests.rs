@@ -26,6 +26,7 @@ fn meeting(project: i64) -> Meeting {
         decision: "Decision".into(),
         actions: vec!["Review".into()],
         speakers: vec!["Test".into()],
+        recorded: false,
     }
 }
 fn memory() -> Connection {
@@ -240,7 +241,7 @@ fn future_schema_is_rejected_without_resetting_data() {
             },
         )
         .unwrap();
-        db.execute_batch("PRAGMA user_version=2").unwrap();
+        db.execute_batch("PRAGMA user_version=4").unwrap();
     }
     assert!(open(&path).is_err());
     {
@@ -253,8 +254,44 @@ fn future_schema_is_rejected_without_resetting_data() {
         assert_eq!(
             db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
                 .unwrap(),
-            2
+            4
         );
     }
     std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn desktop_preferences_migrate_without_changing_existing_meetings() {
+    let directory =
+        std::env::temp_dir().join(format!("miw-preference-migrate-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir(&directory).unwrap();
+    let path = directory.join("test.sqlite3");
+    {
+        let mut db = open(&path).unwrap();
+        apply(
+            &mut db,
+            Request::CreateMeeting {
+                meeting: meeting(0),
+            },
+        )
+        .unwrap();
+        db.execute_batch("DROP TABLE desktop_preferences; PRAGMA user_version=2;")
+            .unwrap();
+    }
+    {
+        let db = open(&path).unwrap();
+        assert!(!super::detection_enabled(&db).unwrap());
+        assert_eq!(
+            db.query_row("SELECT COUNT(*) FROM meetings", [], |row| row
+                .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        super::set_detection_enabled(&db, true).unwrap();
+    }
+    {
+        let db = open(&path).unwrap();
+        assert!(super::detection_enabled(&db).unwrap());
+    }
+    std::fs::remove_dir_all(directory).unwrap();
 }

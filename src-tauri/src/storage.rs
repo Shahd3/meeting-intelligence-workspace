@@ -32,6 +32,8 @@ pub struct Meeting {
     pub decision: String,
     pub actions: Vec<String>,
     pub speakers: Vec<String>,
+    #[serde(default)]
+    pub recorded: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -52,6 +54,7 @@ pub struct Snapshot {
     pub meetings: Vec<Meeting>,
     pub workspaces: Vec<Workspace>,
     pub completed: BTreeMap<String, bool>,
+    pub recordings: Vec<crate::recording::Recording>,
 }
 
 type Result<T> = std::result::Result<T, String>;
@@ -69,11 +72,19 @@ pub fn open(path: &Path) -> Result<Connection> {
     let version: i64 = tx
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .map_err(db_error)?;
-    if version > 1 {
+    if version > 3 {
         return Err("This database requires a newer application version.".into());
     }
     if version == 0 {
         tx.execute_batch(include_str!("../migrations/0001.sql"))
+            .map_err(db_error)?;
+    }
+    if version < 2 {
+        tx.execute_batch(include_str!("../migrations/0002.sql"))
+            .map_err(db_error)?;
+    }
+    if version < 3 {
+        tx.execute_batch(include_str!("../migrations/0003.sql"))
             .map_err(db_error)?;
     }
     tx.commit().map_err(db_error)?;
@@ -250,7 +261,7 @@ fn snapshot(db: &Connection) -> Result<Snapshot> {
         .map_err(db_error)?
         .collect::<rusqlite::Result<Vec<_>>>()
         .map_err(db_error)?;
-    let mut statement = db.prepare("SELECT id,title,COALESCE(workspace_id,0),date,duration,summary,highlights,decision,actions,speakers FROM meetings ORDER BY id DESC").map_err(db_error)?;
+    let mut statement = db.prepare("SELECT id,title,COALESCE(workspace_id,0),date,duration,summary,highlights,decision,actions,speakers,EXISTS(SELECT 1 FROM recordings WHERE meeting_id=meetings.id AND finalized=1) FROM meetings ORDER BY id DESC").map_err(db_error)?;
     let meetings = statement
         .query_map([], |r| {
             Ok(Meeting {
@@ -264,6 +275,7 @@ fn snapshot(db: &Connection) -> Result<Snapshot> {
                 decision: r.get(7)?,
                 actions: strings(r, 8)?,
                 speakers: strings(r, 9)?,
+                recorded: r.get(10)?,
             })
         })
         .map_err(db_error)?
@@ -282,8 +294,27 @@ fn snapshot(db: &Connection) -> Result<Snapshot> {
         workspaces,
         meetings,
         completed,
+        recordings: crate::recording::list(db)?,
     })
 }
 
 #[cfg(test)]
 mod tests;
+
+/// Only the opt-in preference is persisted; detection observations are transient.
+pub fn detection_enabled(db: &Connection) -> Result<bool> {
+    db.query_row(
+        "SELECT meeting_detection FROM desktop_preferences WHERE id=1",
+        [],
+        |row| row.get(0),
+    )
+    .map_err(db_error)
+}
+pub fn set_detection_enabled(db: &Connection, enabled: bool) -> Result<()> {
+    db.execute(
+        "UPDATE desktop_preferences SET meeting_detection=?1 WHERE id=1",
+        [enabled],
+    )
+    .map_err(db_error)?;
+    Ok(())
+}
