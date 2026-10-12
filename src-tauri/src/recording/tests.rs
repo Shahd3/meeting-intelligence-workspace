@@ -74,6 +74,15 @@ fn finalization_is_idempotent_and_deleted_meetings_are_not_recreated() {
     assert!(data.meetings[0].recorded);
     assert!(data.meetings[0].summary.is_empty());
     assert!(data.recordings[0].complete);
+    assert_eq!(
+        db.query_row(
+            "SELECT count(*) FROM processing_jobs WHERE recording_id=?1 AND state='queued'",
+            [&record.id],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        1
+    );
     storage::apply(&mut db, Request::DeleteMeeting { id }).unwrap();
     commit_result(&mut db, &mut record).unwrap();
     recover(&mut db, &f.root).unwrap();
@@ -82,7 +91,90 @@ fn finalization_is_idempotent_and_deleted_meetings_are_not_recreated() {
         .meetings
         .is_empty());
     assert!(list(&db).unwrap()[0].meeting_id.is_none());
+    assert_eq!(
+        db.query_row("SELECT count(*) FROM processing_jobs", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
     assert!(path.exists());
+}
+
+#[test]
+fn save_authorizes_only_new_recordings_and_duplicate_finalization_keeps_one_job() {
+    let f = Fixture::new();
+    let mut db = storage::open(&f.db_path).unwrap();
+    let mut older = f.pending(&mut db);
+    let engine = crate::processing::settings::Engine::Remote {
+        remote: crate::processing::settings::Remote {
+            base_url: "https://example.invalid/v1/".into(),
+            model: "test-model".into(),
+            response_format: "json".into(),
+            language: "auto".into(),
+        },
+        revision: uuid::Uuid::new_v4().to_string(),
+        credential_id: Some(uuid::Uuid::new_v4().to_string()),
+    };
+    db.execute(
+        "INSERT INTO ai_settings(kind,config) VALUES ('transcription',?1)",
+        [serde_json::to_string(&engine).unwrap()],
+    )
+    .unwrap();
+    db.execute("UPDATE transcription_preferences SET automatic_revision=?1,after_recording_rowid=(SELECT max(rowid) FROM recordings) WHERE id=1",[engine.revision()]).unwrap();
+    let mut fresh = f.pending(&mut db);
+    // Match live WASAPI finalization with a nonfatal discontinuity warning.
+    fresh.recovered = true;
+    fresh.warning = Some("Windows reported an audio discontinuity.".into());
+    let mut interrupted = f.pending(&mut db);
+    interrupted.recovered = true;
+    let interrupted_id = interrupted.id.clone();
+    for record in [&mut older, &mut fresh, &mut interrupted] {
+        let path = f.root.join(&record.id).join("microphone.wav");
+        record.tracks[0].frames = wav::Wav::create(&path)
+            .unwrap()
+            .finish(wav::RATE as u64)
+            .unwrap();
+        record.tracks[0].filename = "microphone.wav".into();
+        record.state = if record.id == interrupted_id {
+            "failed"
+        } else {
+            "saved"
+        }
+        .into();
+        record.complete = !record.recovered;
+        commit_result(&mut db, record).unwrap();
+        commit_result(&mut db, record).unwrap();
+    }
+    let (ready, approval): (bool, Option<String>) = db
+        .query_row(
+            "SELECT ready,upload_revision FROM processing_jobs WHERE recording_id=?1",
+            [&fresh.id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert!(ready);
+    assert_eq!(approval.as_deref(), Some(engine.revision()));
+    assert!(!db
+        .query_row(
+            "SELECT ready FROM processing_jobs WHERE recording_id=?1",
+            [&interrupted.id],
+            |r| r.get::<_, bool>(0)
+        )
+        .unwrap());
+    assert!(!db
+        .query_row(
+            "SELECT ready FROM processing_jobs WHERE recording_id=?1",
+            [&older.id],
+            |r| r.get::<_, bool>(0)
+        )
+        .unwrap());
+    assert_eq!(
+        db.query_row("SELECT count(*) FROM processing_jobs", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        3
+    );
+    assert!(f.root.join(&fresh.id).join("microphone.wav").exists());
 }
 
 #[test]

@@ -1,6 +1,6 @@
 mod playback;
 mod service;
-mod wav;
+pub(crate) mod wav;
 #[cfg(windows)]
 mod windows;
 pub use playback::response;
@@ -166,6 +166,8 @@ fn commit_result(db: &mut Connection, recording: &mut Recording) -> Result<()> {
         .map_err(db_error)?;
     if finalized {
         recording.meeting_id = existing;
+        crate::processing::enqueue(&tx, &recording.id)?;
+        tx.commit().map_err(db_error)?;
         return Ok(());
     }
     if !recording.tracks.iter().any(|t| t.frames > 0) {
@@ -187,6 +189,13 @@ fn commit_result(db: &mut Connection, recording: &mut Recording) -> Result<()> {
         )
         .map_err(db_error)?;
     }
+    crate::processing::enqueue_finalized(
+        &tx,
+        &recording.id,
+        // A WASAPI discontinuity marks audio as recovered even after a successful
+        // Stop & Save. Only interrupted/failed captures must remain manual.
+        recording.state == "saved",
+    )?;
     tx.commit().map_err(db_error)?;
     recording.meeting_id = Some(meeting);
     Ok(())

@@ -1,10 +1,128 @@
 mod desktop_widget;
 mod detection;
+mod processing;
 mod recording;
 mod storage;
 use std::sync::Arc;
 use tauri::Manager;
+// Debug-only isolation for desktop validation; release builds always use per-user paths.
+fn data_directory(app: &tauri::AppHandle, local: bool) -> Result<std::path::PathBuf, String> {
+    #[cfg(debug_assertions)]
+    if let Some(directory) = std::env::var_os("MIW_DEV_DATA_DIR") {
+        let path = std::path::PathBuf::from(directory);
+        if !path.is_absolute() {
+            return Err("MIW_DEV_DATA_DIR must be an absolute test directory.".into());
+        }
+        return Ok(path.join(if local { "local" } else { "data" }));
+    }
+    (if local {
+        app.path().app_local_data_dir()
+    } else {
+        app.path().app_data_dir()
+    })
+    .map_err(|_| "Unable to locate application data storage.".into())
+}
 struct RecorderState(Result<Arc<recording::Recorder>, String>);
+#[tauri::command]
+async fn ai_settings_save(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    request: processing::settings::Save,
+) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("AI settings belong to the main window.".into());
+    }
+    let worker = app.state::<Arc<processing::Pipeline>>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        processing::settings::save(
+            &mut storage::open(&worker.database)?,
+            request,
+            &processing::credentials::WindowsVault,
+        )
+    })
+    .await
+    .map_err(|_| "Unable to save AI settings.")?
+}
+#[tauri::command]
+async fn ai_connection_test(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    kind: String,
+    revision: String,
+    authorized: bool,
+) -> Result<String, String> {
+    if window.label() != "main"
+        || !authorized
+        || !["transcription", "summarization"].contains(&kind.as_str())
+    {
+        return Err("Explicit approval of this saved connection test is required.".into());
+    }
+    let worker = app.state::<Arc<processing::Pipeline>>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let engine = processing::settings::load(&storage::open(&worker.database)?, &kind)?
+            .ok_or("Save these settings before testing.")?;
+        if engine.revision() != revision {
+            return Err("Settings changed. Review the saved destination before testing.".into());
+        }
+        processing::test_connection(&engine, &kind)
+    })
+    .await
+    .map_err(|_| "Connection test could not finish.")?
+}
+#[tauri::command]
+async fn processing_rebind(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    id: String,
+    revision: String,
+    authorize: bool,
+) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("Upload approval belongs to the main window.".into());
+    }
+    let worker = app.state::<Arc<processing::Pipeline>>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        processing::settings::rebind(
+            &mut storage::open(&worker.database)?,
+            &id,
+            &revision,
+            authorize,
+        )
+    })
+    .await
+    .map_err(|_| "Unable to apply job settings.")?
+}
+#[tauri::command]
+async fn processing_status(
+    app: tauri::AppHandle,
+    meeting_id: Option<i64>,
+) -> Result<processing::View, String> {
+    let worker = app.state::<Arc<processing::Pipeline>>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || worker.status(meeting_id))
+        .await
+        .map_err(|_| "Unable to read processing status.")?
+}
+#[tauri::command]
+async fn processing_configure(
+    app: tauri::AppHandle,
+    config: processing::Config,
+) -> Result<(), String> {
+    let worker = app.state::<Arc<processing::Pipeline>>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        processing::set_config(&mut storage::open(&worker.database)?, config)
+    })
+    .await
+    .map_err(|_| "Unable to configure transcription.")?
+}
+#[tauri::command]
+async fn processing_retry(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let worker = app.state::<Arc<processing::Pipeline>>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        processing::retry(&storage::open(&worker.database)?, &id)
+    })
+    .await
+    .map_err(|_| "Unable to retry transcription.")?
+}
 fn recorder(app: &tauri::AppHandle) -> Result<Arc<recording::Recorder>, String> {
     app.state::<RecorderState>().0.clone()
 }
@@ -53,10 +171,7 @@ async fn data_request(
     app: tauri::AppHandle,
     request: storage::Request,
 ) -> Result<storage::Snapshot, String> {
-    let directory = app
-        .path()
-        .app_data_dir()
-        .map_err(|_| "Unable to locate your application data directory.")?;
+    let directory = data_directory(&app, false)?;
     tauri::async_runtime::spawn_blocking(move || {
         std::fs::create_dir_all(&directory)
             .map_err(|_| "Unable to access your application data directory.")?;
@@ -122,16 +237,10 @@ pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
             let initialized = (|| -> Result<_, String> {
-                let database_directory = app
-                    .path()
-                    .app_data_dir()
-                    .map_err(|_| "Unable to locate local database storage.")?;
+                let database_directory = data_directory(app.handle(), false)?;
                 std::fs::create_dir_all(&database_directory)
                     .map_err(|_| "Unable to access local database storage.")?;
-                let local_directory = app
-                    .path()
-                    .app_local_data_dir()
-                    .map_err(|_| "Unable to locate local audio storage.")?;
+                let local_directory = data_directory(app.handle(), true)?;
                 recording::Recorder::new(
                     local_directory.join("recordings"),
                     database_directory.join("workspace.sqlite3"),
@@ -139,7 +248,13 @@ pub fn run() {
                 .map(Arc::new)
             })();
             app.manage(RecorderState(initialized));
-            let database = app.path().app_data_dir()?.join("workspace.sqlite3");
+            let database = data_directory(app.handle(), false)?.join("workspace.sqlite3");
+            let pipeline = processing::Pipeline::new(
+                database.clone(),
+                data_directory(app.handle(), true)?.join("recordings"),
+            );
+            app.manage(pipeline.clone());
+            pipeline.start();
             let widget = Arc::new(desktop_widget::DesktopWidget::new(database));
             app.manage(widget.clone());
             widget.run(app.handle().clone());
@@ -198,6 +313,12 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            ai_settings_save,
+            ai_connection_test,
+            processing_rebind,
+            processing_status,
+            processing_configure,
+            processing_retry,
             data_request,
             recording_status,
             recording_devices,
@@ -224,6 +345,9 @@ pub fn run() {
                     return;
                 }
                 app.state::<Arc<desktop_widget::DesktopWidget>>()
+                    .shutdown
+                    .store(true, std::sync::atomic::Ordering::Release);
+                app.state::<Arc<processing::Pipeline>>()
                     .shutdown
                     .store(true, std::sync::atomic::Ordering::Release);
             }

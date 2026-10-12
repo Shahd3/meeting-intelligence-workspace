@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { discoverDevices, type AudioDevices, type RecordingController } from "../data/recording";
 import { sessionView, unavailableSources } from "../data/recordingFlow";
+import { useProcessing } from "../data/processing";
 import { formatTime } from "../data/simulation";
 
 export function RecordingPanel({ recorder, onRecovered, saving, saveError, onRetry }: { recorder: RecordingController; onRecovered: () => void; saving: boolean; saveError: string | null; onRetry: () => void }) {
+  const processing = useProcessing();
+  const ai = processing.view?.ai.transcription;
   const [devices, setDevices] = useState<AudioDevices | null>(null);
   const [deviceError, setDeviceError] = useState<string | null>(null);
   const [title, setTitle] = useState("");
@@ -37,6 +40,8 @@ export function RecordingPanel({ recorder, onRecovered, saving, saveError, onRet
     {active && <><p className="muted">{status.state === "paused" ? "Paused time is excluded from your recording." : "Audio is being preserved on this device."}</p><div className="wave" aria-hidden="true" style={{ opacity: status.peak > 0.005 ? 1 : 0.35 }}>{Array.from({ length: 40 }, (_, index) => <i key={index} />)}</div></>}
     {!active && !failed && <fieldset className="audio-sources" disabled={recorder.busy || discovering}>
       <label className="field">Meeting title<input value={title} placeholder="Give this conversation a name" onChange={event => setTitle(event.target.value)} required maxLength={90} /></label>
+      <p className="muted" role="status">{!processing.view ? "Checking saved transcription preferences…" : ai?.automatic_transcription ? ai.mode === "remote" ? "Automatic transcription is enabled. After saving, audio will be uploaded to your authorized transcription provider in the background." : "Automatic local transcription is enabled. Processing starts after saving without uploading audio." : "Automatic transcription is not authorized. Enable and save it in Recording Preferences → AI Processing before starting; this recording will otherwise require manual transcription."}</p>
+      {processing.error && <p role="alert">Unable to verify transcription preferences: {processing.error}</p>}
       <div className="audio-summary"><span>Microphone <strong>{microphone ? "Enabled" : "Off"}</strong></span><span>System audio <strong>{system ? "Enabled" : "Off"}</strong></span></div>
       <details className="audio-settings"><summary>Audio Settings</summary>
         <label className="source-toggle"><input type="checkbox" checked={microphone} onChange={event => setMicrophone(event.target.checked)} /> Record my microphone</label>
@@ -59,6 +64,6 @@ export function RecordingPanel({ recorder, onRecovered, saving, saveError, onRet
       {saveError && <button className="pill" onClick={onRetry}>Retry loading saved recording</button>}
       {failed && <div className="recovery-notice"><p>Captured audio is retained. Check recovery before starting a new session.</p><button className="pill" disabled={recorder.busy} onClick={async () => { if (await recorder.recover()) onRecovered(); }}>Recover retained audio</button></div>}
     </div>
-    <p className="muted recording-disclaimer">{active ? "You can navigate or hide these controls while capture continues. Stop before closing the app." : "Local audio only · Up to 4 hours per recording · No transcription or AI processing"}</p>
+    <p className="muted recording-disclaimer">{active ? "You can navigate or hide these controls while capture continues. Stop before closing the app." : "Audio saved locally · Up to 4 hours per recording · Transcription follows your saved preferences"}</p>
   </div>;
 }

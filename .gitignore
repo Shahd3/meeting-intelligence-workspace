@@ -40,3 +40,6 @@ Desktop.ini
 *.pcm
 *.recovered.wav
 *.wav.recovery.tmp
+# Local speech models and optional runtime installation directory
+ggml-*.bin
+transcription-runtime/

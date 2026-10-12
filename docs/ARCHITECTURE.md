@@ -1,6 +1,6 @@
 # Architecture Overview
 
-Status: Proposed intelligence architecture, with an implemented desktop and recording foundation. See the implementation boundary below; future processing behavior is not implemented by this document.
+Status: Proposed broader intelligence architecture, with implemented desktop, recording, and local transcription foundations. See the implementation boundary below; future processing behavior is not implemented by this document.
 
 ## Requirements and decision labels
 
@@ -25,9 +25,9 @@ The [product scope](PRODUCT_SCOPE.md) defines delivery boundaries. [ADR 0001](ad
 | --- | --- | --- |
 | User interface | React and TypeScript | React/TypeScript with Vite and the approved custom UI are implemented. |
 | Desktop host | Tauri with a Rust core | Tauri 2 and Rust are implemented; Rust owns Windows WASAPI capture. |
-| Structured persistence | SQLite | Meetings/workspaces and recording metadata use Rust rusqlite repositories with migrations; transcripts, outputs, provenance, and jobs remain future schemas. |
+| Structured persistence | SQLite | Meetings/workspaces and recording metadata use Rust rusqlite repositories with migrations; Migration 0004 implements transcription jobs, checkpoints, and transcript provenance; generation/retrieval schemas remain future work. |
 | Recording storage | App-managed local files | Implemented: separate PCM16 48 kHz stereo WAV tracks in per-user local app storage, referenced by SQLite. Retention settings and backup policy remain undecided. |
-| AI services | Provider-independent transcription and generation adapters | Provider, models, hosting, and network requirements remain undecided. |
+| AI services | Provider-independent transcription and generation adapters | Implemented STT adapters: local whisper.cpp CLI and configured OpenAI-compatible remote transcription with per-recording upload approval. Future generation has a separate configurable chat-completions contract; execution remains deferred. |
 | Retrieval | Project-scoped transcript retrieval | Evaluate lexical retrieval first; embeddings and vector storage are not selected. |
 | Optional AI runtime | Python only if a selected engine needs it | No required Python service or sidecar in this proposal. |
 
@@ -135,3 +135,13 @@ No company repositories, infrastructure, credentials, endpoints, source code, pr
 One independent native Tauri widget window is managed by a Rust coordinator and observes the existing recording service. Main and widget controls share recording identity/state; Rust serializes and latches Stop requests across webviews. Widget visibility, drag behavior, main-window restoration, and optional detection belong to desktop adapters, separate from reusable intelligence services. Normal app exit remains blocked during capture/finalization.
 
 Optional local meeting detection is off by default; only its boolean preference is persisted in SQLite migration 0003. The five-second scanner combines supported process/window identification with existing WASAPI microphone-session activity where available, using an explicit Zoom call-window fallback. It never opens an audio stream or confirms meeting attendance. Suggestions require user action and always open recording setup. Observations and suppression keys remain transient. See [Desktop widget and detection](DESKTOP_WIDGET.md) for implemented signals, false-positive/false-negative limitations, and tested behavior.
+
+## Implemented local transcription slice
+
+The existing finalization transaction now registers a unique SQLite transcription job. A backend-owned single worker with an exclusive OS lock, transactional ownership, bounded retries, per-source chunk checkpoints, and atomic transcript/result receipts processes finalized WAVs independently of the UI lifecycle. Local runtime/model configuration is explicit; an optional remote transcription adapter now requires revision-specific upload approval, as described below. Original audio and capture safeguards remain intact. [ADR 0003](adr/0003-local-transcription-queue.md) and [TRANSCRIPTION.md](TRANSCRIPTION.md) document the implemented contracts and limitations; generation, structured intelligence, and retrieval remain proposed.
+
+## Configurable AI settings
+
+Transcription provider settings and future summarization settings are separate versioned contracts. Non-secret settings are stored in SQLite, and Windows Credential Manager owns API keys. Started jobs freeze their provider snapshot; remote work additionally requires current revision-specific upload approval, issued at finalization under the saved automatic preference or through an explicit manual action. Explicit rebinding clears incompatible partial checkpoints without changing recordings or completed transcripts. Nullable timestamps preserve remote-provider limitations. [AI_PROVIDERS.md](AI_PROVIDERS.md) describes security, consent, tests, and gateway compatibility.
+
+Automatic transcription uses the existing finalization transaction and worker: migration 0007 persists a reviewed provider revision, a capture eligibility watermark, and a ready flag. New eligible captures receive authorization when saved; older/backfilled captures stay manual. Meeting detail/status reads never start work. Provider changes require renewed preference review; existing checkpoint, retry, and result receipts remain authoritative.
