@@ -2,8 +2,8 @@
 #[cfg(test)]
 mod ai_tests;
 pub mod credentials;
-mod provider;
-mod remote;
+pub(crate) mod provider;
+pub(crate) mod remote;
 pub mod settings;
 #[cfg(test)]
 mod tests;
@@ -11,7 +11,15 @@ use crate::storage;
 use fs2::FileExt;
 pub use provider::Config;
 pub fn test_connection(engine: &settings::Engine, kind: &str) -> Result<String> {
-    remote::connection_test(engine, kind).map_err(|e| e.message)
+    if kind == "summarization" {
+        crate::intelligence::connection_test(&crate::intelligence::Config {
+            engine: engine.clone(),
+            language: "en".into(),
+            format: "json_object".into(),
+        })
+    } else {
+        remote::connection_test(engine, kind).map_err(|e| e.message)
+    }
 }
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -69,6 +77,7 @@ pub struct View {
     pub ai: settings::View,
     pub worker_error: Option<String>,
     pub transcript_meeting_id: Option<i64>,
+    pub intelligence: crate::intelligence::View,
 }
 fn insert_job(db: &Connection, recording: &str) -> Result<bool> {
     let inserted=db.execute("INSERT OR IGNORE INTO processing_jobs(id,recording_id,meeting_id,state,stage,ready) SELECT ?1,id,meeting_id,'queued','manual',0 FROM recordings WHERE id=?2 AND finalized=1 AND meeting_id IS NOT NULL",params![uuid::Uuid::new_v4().to_string(),recording]).map_err(db_error)?;
@@ -214,6 +223,7 @@ pub fn view(
         ai: settings::view(db)?,
         worker_error,
         transcript_meeting_id: meeting_id,
+        intelligence: crate::intelligence::view(db, meeting_id, None)?,
     })
 }
 fn claim(db: &mut Connection) -> Result<Option<(String, String, String, u32)>> {
@@ -254,7 +264,7 @@ fn checkpoint(
     .map_err(db_error)?;
     tx.commit().map_err(db_error)
 }
-fn complete(
+pub(crate) fn complete(
     db: &mut Connection,
     id: &str,
     owner: &str,
@@ -272,6 +282,7 @@ fn complete(
     let segments = merge_echoes(segments);
     tx.execute("INSERT INTO transcripts(job_id,meeting_id,recording_id,provider,segments,warning) SELECT id,meeting_id,recording_id,CASE WHEN json_extract(config,'$.mode')='remote' THEN 'openai-compatible' ELSE 'whisper.cpp' END,?1,?2 FROM processing_jobs WHERE id=?3",params![serde_json::to_string(&segments).map_err(|_|"Invalid transcript.")?,warning,id]).map_err(db_error)?;
     tx.execute("UPDATE processing_jobs SET state='completed',stage='complete',owner=NULL,error=NULL,error_category=NULL,completed_at=unixepoch(),updated_at=unixepoch() WHERE id=?1",[id]).map_err(db_error)?;
+    crate::intelligence::register_completed(&tx, id)?;
     tx.commit().map_err(db_error)
 }
 fn record_failure(

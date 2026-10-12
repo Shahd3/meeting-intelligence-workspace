@@ -42,6 +42,7 @@ fn db() -> Connection {
         include_str!("../../migrations/0005.sql"),
         include_str!("../../migrations/0006.sql"),
         include_str!("../../migrations/0007.sql"),
+        include_str!("../../migrations/0008.sql"),
     ] {
         db.execute_batch(migration).unwrap();
     }
@@ -66,6 +67,9 @@ fn save_request(kind: &str, base: &str, key: &str) -> Save {
         api_key: Some(key.into()),
         automatic_transcription: false,
         automatic_reviewed: false,
+        automatic_generation: false,
+        output_language: "en".into(),
+        generation_format: "json_object".into(),
     }
 }
 fn id(engine: &Engine) -> String {

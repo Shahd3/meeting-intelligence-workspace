@@ -10,7 +10,7 @@ For Remote API, enter the API **root**, including its version or gateway prefix 
 
 Choose `verbose_json` to request segment timestamps, or `json` for text-oriented gateways/models. The adapter sends multipart fields `file` (16kHz mono PCM16 WAV), `model`, `response_format`, optional `language`, and `timestamp_granularities[]=segment` only for verbose JSON. Microphone/system tracks remain independent, with the existing 60-second chunks and common recording timeline. No naive concatenation is introduced.
 
-**Summarization:** save a separate API root, model, and key for the future **OpenAI-compatible chat completions** contract (`chat/completions`). Saving it does not process meeting content, create summaries, or enable a generation worker. Even identical transcription/summarization endpoints have separate credentials and revisions.
+**Summarization:** use a separate API root, chat model, and Windows Credential Manager key for OpenAI-compatible `chat/completions`. Saving configuration alone sends no meeting content. Enable and save the independent automatic-generation preference to authorize sharing future transcripts. See [AI_MEETING_INTELLIGENCE.md](AI_MEETING_INTELLIGENCE.md) for execution and compatibility limits.
 
 ## Credentials and outbound authorization
 
@@ -30,7 +30,7 @@ Tests always use the **saved** settings and matching revision; save edits first.
 
 - Local: checks readable executable/model fingerprints. It does not run a model or prove speech quality.
 - Remote transcription: the user must approve key transmission and a **one-second generated silence WAV upload**, which may incur API charges. The real multipart request/response shape is checked without using a meeting recording. This does not establish speech quality or availability of timestamps on actual speech.
-- Summarization: the user must approve key transmission to **GET `models`**. The test checks whether the selected model is listed; no meeting content or chat-completion generation is sent. Provider request charges may apply. Some gateways omit/restrict model enumeration; a failed model-list test does not prove their chat completions endpoint is unsupported, and saving valid settings remains possible. Chat-completions compatibility is intentionally unverified until that feature is implemented.
+- Summarization: explicitly authorize a synthetic chat-completion request using the saved provider, language and JSON mode. No meeting data is sent; API charges may apply. The response must pass structured evidence validation. Model enumeration is not required.
 
 ## Queue policy and result compatibility
 
@@ -56,7 +56,7 @@ Checks: TypeScript, frontend build, locked Rust check, formatting, Rust unit tes
 
 Tests use dummy credentials and loopback mock servers only. They cover OS credential persistence/replacement/deletion, independent settings, endpoint-change restrictions, rollback/cleanup journaling, local checkpoint compatibility, queued revision-specific consent, changed settings, multipart formatting, source timestamps/null timestamps, invalid credentials, rate-limit classification, redirects, unsupported bodies, and model-list-only summarization tests. Existing recording/storage/recovery tests remain in the suite.
 
-No real provider account, user API key, paid remote speech-to-text, or remote meeting content was used. Live endpoint/model compatibility, provider billing/retention, TLS/proxy deployment differences, key deletion failure across OS restarts, and long remote recordings require further user-authorized testing. Summarization quality/execution is not implemented or tested.
+No real provider account, user API key, paid remote speech-to-text, or remote meeting content was used. Live endpoint/model compatibility, provider billing/retention, TLS/proxy deployment differences, key deletion failure across OS restarts, and long remote recordings require further user-authorized testing. Generation execution is tested with synthetic loopback providers; real-model quality and gateway compatibility remain user-authorized manual checks.
 
 Verified results for this enhancement: 51 standard Rust tests passed (one opt-in real local test excluded from that default run), the real two-track local Whisper regression test passed separately, and all 7 recording-flow tests passed. TypeScript, production build, Rust compilation, formatting, and Git whitespace checks passed. Native settings UI and a live paid gateway were not manually tested in this enhancement. Tests created/deleted only app-namespaced dummy credentials and contacted only loopback mock servers.
 
@@ -84,3 +84,7 @@ Remaining manual verification, using a freshly restarted build:
 4. Close and restart the app. Verify the transcript and enabled preference persist. Repeatedly reopen details/list; verify the job identity/attempt count does not change and no second job/upload occurs.
 5. Repeat with another new recording. Disable automatic mode before another capture and verify the pre-recording notice plus explicit manual flow. Change provider settings and verify renewed preference review is required; older recordings remain manual.
 6. Inject an unavailable provider/rate-limit failure with a mock service: verify scheduled retries need no action, Retry appears only after failure, and audio/checkpoints survive restart. Live Groq verification requires the user's explicit authorization and remains unperformed.
+
+## Meeting intelligence implementation update
+
+Summarization configuration now executes independently through the durable generation queue. Its automatic preference authorizes transcript text, not audio; the synthetic test now uses chat completions with the saved language/structured-output mode instead of model enumeration. See [AI_MEETING_INTELLIGENCE.md](AI_MEETING_INTELLIGENCE.md) for the current contracts, authorization scope, bounded retries, provider compatibility and testing limits.

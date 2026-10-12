@@ -1490,3 +1490,20 @@ body.widget-window { background: var(--cream); overflow: hidden; }
 .ai-consent { display: flex !important; align-items: flex-start; gap: 8px; font-size: 12px; line-height: 1.5; margin: 10px 0; }
 .ai-consent input { width: auto; flex: 0 0 auto; margin-top: 3px; }
 .ai-connection-test { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 14px; overflow-wrap: anywhere; }
+
+/* Meeting intelligence follows the existing pastel cards and typography. */
+.intelligence-controls { margin-block: 18px; }
+.intelligence-controls > label, .intelligence-controls .ai-consent { display: block; margin-block: 12px; }
+.intelligence-topic { border: 1px solid var(--line, #deded3); border-radius: 18px; padding: 16px 20px; margin-block: 14px; }
+.intelligence-topic summary { cursor: pointer; font-weight: 600; }
+.intelligence-fact { margin-block: 12px; }
+.evidence-links { display: inline-flex; gap: 12px; flex-wrap: wrap; font-size: 12px; }
+.evidence-selected { background: #edf0de; border-radius: 16px; outline: 2px solid #b6c395; padding: 12px; }
+.intelligence-action small { display: block; margin-block: 8px; color: #6c7165; }
+.minutes-document { padding: 24px; background: #fffdf5; border: 1px solid #e2e2d7; border-radius: 20px; margin-top: 20px; }
+.minutes-table { overflow-x: auto; }
+.minutes-table table { border-collapse: collapse; width: 100%; }
+.minutes-table th, .minutes-table td { padding: 12px; text-align: start; border-bottom: 1px solid #deded3; vertical-align: top; }
+.meeting-intelligence[dir="rtl"] { text-align: right; }
+.intelligence-coverage { font-size: 12px; margin-top: 24px; }
+.meeting-intelligence textarea { width: 100%; border-radius: 12px; padding: 12px; font: inherit; }

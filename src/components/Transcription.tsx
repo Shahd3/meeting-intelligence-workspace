@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { UploadApproval } from "./AIProcessingPreferences";
 import { processingLabel, useProcessing, type ProcessingJob } from "../data/processing";
 import { formatTime } from "../data/simulation";
@@ -17,15 +18,17 @@ export function TranscriptionStatus({ job }: { job: ProcessingJob }) {
     {data.error && <p role="alert">{data.error}</p>}
   </div>;
 }
-export function MeetingTranscript({ meetingId }: { meetingId: number }) {
+export function MeetingTranscript({ meetingId, evidenceId }: { meetingId: number; evidenceId?: string | null }) {
   const { view, error } = useProcessing();
+  const evidenceLoaded = !!view?.jobs.some(job => job.meeting_id === meetingId && job.segments !== null);
+  useEffect(() => { if (!evidenceId) return; const element = document.getElementById(`evidence-${evidenceId}`); if (element) { element.scrollIntoView({ block: "center", behavior: "smooth" }); element.focus({ preventScroll: true }); } }, [evidenceId, view?.transcript_meeting_id, evidenceLoaded]);
   const jobs = view?.jobs.filter(job => job.meeting_id === meetingId) || [];
   if (error) return <p role="alert">{error}</p>;
   if (!view || view.transcript_meeting_id !== meetingId) return <p role="status">Loading transcription status…</p>;
   if (!jobs.length) return <p className="muted">No finalized audio is available for transcription.</p>;
   return <div className="transcript persisted-transcript">{jobs.map(job => <section key={job.id}>
     {job.state === "completed" && !job.segments?.length && <p>No speech was recognized. Silent audio produces an empty transcript.</p>}
-    {job.segments?.map((segment, index) => <div className="speech" key={`${job.id}-${index}`}><small>{segment.start_ms === null || segment.end_ms === null ? "No timestamps" : `${formatTime(Math.floor(segment.start_ms / 1000))}–${formatTime(Math.floor(segment.end_ms / 1000))}`}</small><div><h3>{segment.sources.map(source => source.role === "system" ? "System audio" : "Microphone").join(" + ")}</h3><p>{segment.text}</p></div></div>)}
+    {job.segments?.map((segment, index) => <div className={`speech ${evidenceId === `${job.id}:${index}` ? "evidence-selected" : ""}`} id={`evidence-${job.id}:${index}`} tabIndex={-1} key={`${job.id}-${index}`}><small>{segment.start_ms === null || segment.end_ms === null ? "No timestamps" : `${formatTime(Math.floor(segment.start_ms / 1000))}–${formatTime(Math.floor(segment.end_ms / 1000))}`}</small><div><h3>{segment.sources.map(source => source.role === "system" ? "System audio" : "Microphone").join(" + ")}</h3><p>{segment.text}</p></div></div>)}
     {job.state !== "completed" && <p className="muted">The full transcript appears after all source tracks finish. Saved audio remains available above.</p>}
   </section>)}</div>;
 }
