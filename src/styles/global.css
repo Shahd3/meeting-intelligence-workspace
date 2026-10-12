@@ -1474,3 +1474,19 @@ body.widget-window { background: var(--cream); overflow: hidden; }
 .preference-toggle small { display: block; margin-top: 5px; }
 .preference-toggle input { width: 20px; height: 20px; accent-color: #6d7a5e; }
 .recording-preferences > .muted { font-size: 13px; line-height: 1.7; margin-top: 14px; }
+
+.transcription-preferences { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
+.transcription-preferences form { display: grid; gap: 12px; }
+.transcription-preferences label { display: grid; gap: 6px; font-size: 13px; }
+.transcription-preferences input { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--cream); }
+.transcription-status { margin: 12px 0; font-size: 13px; overflow-wrap: anywhere; }
+.transcription-status button { margin: 8px 0 8px 12px; }
+.persisted-transcript .speech { grid-template-columns: 110px minmax(0, 1fr); }
+.persisted-transcript .speech > small { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+.ai-settings-tabs { display: flex; gap: 8px; margin: 14px 0; }
+.ai-settings-tabs button { padding: 9px 16px; font-size: 13px; }
+.ai-upload-notice { background: var(--peach); padding: 12px 14px; border-radius: 14px; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.ai-consent { display: flex !important; align-items: flex-start; gap: 8px; font-size: 12px; line-height: 1.5; margin: 10px 0; }
+.ai-consent input { width: auto; flex: 0 0 auto; margin-top: 3px; }
+.ai-connection-test { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 14px; overflow-wrap: anywhere; }

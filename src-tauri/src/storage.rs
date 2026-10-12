@@ -72,7 +72,7 @@ pub fn open(path: &Path) -> Result<Connection> {
     let version: i64 = tx
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .map_err(db_error)?;
-    if version > 3 {
+    if version > 7 {
         return Err("This database requires a newer application version.".into());
     }
     if version == 0 {
@@ -85,6 +85,22 @@ pub fn open(path: &Path) -> Result<Connection> {
     }
     if version < 3 {
         tx.execute_batch(include_str!("../migrations/0003.sql"))
+            .map_err(db_error)?;
+    }
+    if version < 4 {
+        tx.execute_batch(include_str!("../migrations/0004.sql"))
+            .map_err(db_error)?;
+    }
+    if version < 5 {
+        tx.execute_batch(include_str!("../migrations/0005.sql"))
+            .map_err(db_error)?;
+    }
+    if version < 6 {
+        tx.execute_batch(include_str!("../migrations/0006.sql"))
+            .map_err(db_error)?;
+    }
+    if version < 7 {
+        tx.execute_batch(include_str!("../migrations/0007.sql"))
             .map_err(db_error)?;
     }
     tx.commit().map_err(db_error)?;

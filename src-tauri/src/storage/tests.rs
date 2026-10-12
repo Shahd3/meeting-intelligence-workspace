@@ -241,7 +241,7 @@ fn future_schema_is_rejected_without_resetting_data() {
             },
         )
         .unwrap();
-        db.execute_batch("PRAGMA user_version=4").unwrap();
+        db.execute_batch("PRAGMA user_version=8").unwrap();
     }
     assert!(open(&path).is_err());
     {
@@ -254,7 +254,7 @@ fn future_schema_is_rejected_without_resetting_data() {
         assert_eq!(
             db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
                 .unwrap(),
-            4
+            8
         );
     }
     std::fs::remove_file(path).unwrap();
@@ -267,7 +267,11 @@ fn desktop_preferences_migrate_without_changing_existing_meetings() {
     std::fs::create_dir(&directory).unwrap();
     let path = directory.join("test.sqlite3");
     {
-        let mut db = open(&path).unwrap();
+        let mut db = Connection::open(&path).unwrap();
+        db.execute_batch(include_str!("../../migrations/0001.sql"))
+            .unwrap();
+        db.execute_batch(include_str!("../../migrations/0002.sql"))
+            .unwrap();
         apply(
             &mut db,
             Request::CreateMeeting {
@@ -275,8 +279,6 @@ fn desktop_preferences_migrate_without_changing_existing_meetings() {
             },
         )
         .unwrap();
-        db.execute_batch("DROP TABLE desktop_preferences; PRAGMA user_version=2;")
-            .unwrap();
     }
     {
         let db = open(&path).unwrap();

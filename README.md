@@ -57,3 +57,11 @@ See [Architecture](docs/ARCHITECTURE.md), [Product scope](docs/PRODUCT_SCOPE.md)
 During capture, a compact draggable widget stays above ordinary desktop windows, including while the main app is minimized. Pause/Resume and Stop & Save control the existing Rust recording session. Saving hides the widget; errors retain access to recovery.
 
 Use the gear button → Recording preferences to opt into local automatic meeting detection (disabled initially). Likely Teams, Zoom, or Google Meet calls can trigger a suggestion. Start Recording opens setup for your title and audio choices; capture always requires your confirmation. Detection reads window identity and existing microphone-session metadata, never microphone audio. See [Desktop widget and detection](docs/DESKTOP_WIDGET.md) for signal limitations, privacy boundaries, and validation.
+
+### Local transcription
+
+Configure a trusted Windows `whisper-cli.exe` and compatible GGML model through Recording preferences → AI Processing → Transcription → Local Whisper. Recognition is local, requires no Python/cloud account, and runs through a persistent backend queue after recording finalization. Previously finalized recordings are queued at startup. Jobs, retries, source checkpoints, and timestamped transcripts survive restart; original audio is retained. See [TRANSCRIPTION.md](docs/TRANSCRIPTION.md) for runtime setup, tests, and limitations. Summaries, action-item generation, and workspace Q&A remain future features.
+
+### Configurable AI providers
+
+Recording Preferences → AI Processing supports Local Whisper or a user-configured OpenAI-compatible transcription API. Enable and save Automatically transcribe saved recordings to authorize future captures with the selected provider, including remote uploads. Older recordings stay manual; with automatic mode off, Transcribe requires a one-time remote confirmation after clicking. API keys use Windows Credential Manager; transcription and future summarization settings/keys are separate. Connection tests are optional, explicit, and disclose possible API charges. Summarization configuration is saved but meeting summarization is not implemented. See [AI_PROVIDERS.md](docs/AI_PROVIDERS.md) for setup and compatibility.

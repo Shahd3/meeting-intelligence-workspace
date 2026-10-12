@@ -1,3 +1,4 @@
+import { TranscriptionPreferences } from "../components/Transcription";
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useDesktopWidget } from "../data/desktopWidget";
@@ -158,7 +159,7 @@ export function App() {
     {error && <div className="storage-error" role="alert"><p>{error}</p><button className="pill" disabled={busy} onClick={() => void run({ kind: "load" })}>Reload data</button></div>}
     {dialog && <Modal title={dialogTitles[dialog.kind]} onClose={close}>
       <fieldset className="dialog-fields" disabled={busy}>
-      {dialog.kind === "settings" && <RecordingPreferences />}
+      {dialog.kind === "settings" && <><RecordingPreferences /><TranscriptionPreferences /></>}
       {dialog.kind === "about" && <AboutDemo onClose={close} />}
       {dialog.kind === "create" && <CreateWorkspaceForm onSave={createWorkspace} onClose={close} />}
       {dialog.kind === "editWorkspace" && <CreateWorkspaceForm initial={dialog.workspace} onSave={createWorkspace} onClose={close} />}
