@@ -1,6 +1,6 @@
 # Architecture Overview
 
-Status: Proposed broader intelligence architecture, with implemented desktop, recording, and local transcription foundations. See the implementation boundary below; future processing behavior is not implemented by this document.
+Status: Proposed broader intelligence architecture, with implemented desktop, recording, transcription, and meeting intelligence foundations. See the implementation boundary below; future processing behavior is not implemented by this document.
 
 ## Requirements and decision labels
 
@@ -25,9 +25,9 @@ The [product scope](PRODUCT_SCOPE.md) defines delivery boundaries. [ADR 0001](ad
 | --- | --- | --- |
 | User interface | React and TypeScript | React/TypeScript with Vite and the approved custom UI are implemented. |
 | Desktop host | Tauri with a Rust core | Tauri 2 and Rust are implemented; Rust owns Windows WASAPI capture. |
-| Structured persistence | SQLite | Meetings/workspaces and recording metadata use Rust rusqlite repositories with migrations; Migration 0004 implements transcription jobs, checkpoints, and transcript provenance; generation/retrieval schemas remain future work. |
+| Structured persistence | SQLite | Meetings/workspaces and recording metadata use Rust rusqlite repositories with migrations; Migration 0004 implements transcription jobs, checkpoints, and transcript provenance; Migration 0008 implements independent generation jobs, transcript evidence snapshots, structured result revisions, actions and attendee overrides; retrieval remains future work. |
 | Recording storage | App-managed local files | Implemented: separate PCM16 48 kHz stereo WAV tracks in per-user local app storage, referenced by SQLite. Retention settings and backup policy remain undecided. |
-| AI services | Provider-independent transcription and generation adapters | Implemented STT adapters: local whisper.cpp CLI and configured OpenAI-compatible remote transcription with per-recording upload approval. Future generation has a separate configurable chat-completions contract; execution remains deferred. |
+| AI services | Provider-independent transcription and generation adapters | Implemented STT adapters: local whisper.cpp CLI and configured OpenAI-compatible remote transcription with per-recording upload approval. Generation now uses a separate configurable, authorized chat-completions adapter and durable Rust worker. |
 | Retrieval | Project-scoped transcript retrieval | Evaluate lexical retrieval first; embeddings and vector storage are not selected. |
 | Optional AI runtime | Python only if a selected engine needs it | No required Python service or sidecar in this proposal. |
 
@@ -70,7 +70,7 @@ flowchart TD
 
 Issue #3 implements Rust-owned microphone and Windows output loopback capture, endpoint selection and Windows format conversion, pause/resume with an active clock, separate timestamp-aligned WAV tracks, periodic synchronization, SQLite capture/track checkpoints, recoverable finalization, idempotent meeting registration, startup/manual recovery, and ID-scoped playback. UI navigation does not own capture; normal window close is blocked while active. Workspace deletion never deletes recordings. Detailed contracts, validation results, and limitations are in [Windows recording](WINDOWS_RECORDING.md).
 
-This foundation does **not** implement a transcription queue, AI calls, transcripts, generated artifacts, retrieval, or automatic retention. Real recorded meetings begin with empty intelligence fields. Python remains optional. The proposed processing flow below describes the next integration boundary, not current execution.
+The recording module itself does not own AI processing. Separate Rust modules now implement durable transcription and generation queues, validated transcripts and structured meeting intelligence; retrieval and automatic retention remain future work. Real recorded meetings begin with empty intelligence fields; independently authorized generation publishes versioned structured results without overwriting user metadata. Python remains optional. The proposed processing flow below describes the next integration boundary, not current execution.
 
 ## Recording to transcription and summarization
 
@@ -145,3 +145,7 @@ The existing finalization transaction now registers a unique SQLite transcriptio
 Transcription provider settings and future summarization settings are separate versioned contracts. Non-secret settings are stored in SQLite, and Windows Credential Manager owns API keys. Started jobs freeze their provider snapshot; remote work additionally requires current revision-specific upload approval, issued at finalization under the saved automatic preference or through an explicit manual action. Explicit rebinding clears incompatible partial checkpoints without changing recordings or completed transcripts. Nullable timestamps preserve remote-provider limitations. [AI_PROVIDERS.md](AI_PROVIDERS.md) describes security, consent, tests, and gateway compatibility.
 
 Automatic transcription uses the existing finalization transaction and worker: migration 0007 persists a reviewed provider revision, a capture eligibility watermark, and a ready flag. New eligible captures receive authorization when saved; older/backfilled captures stay manual. Meeting detail/status reads never start work. Provider changes require renewed preference review; existing checkpoint, retry, and result receipts remain authoritative.
+
+## Implemented meeting intelligence
+
+[AI_MEETING_INTELLIGENCE.md](AI_MEETING_INTELLIGENCE.md) and [ADR 0004](adr/0004-meeting-intelligence.md) document the generation implementation and exact limits. Successful transcription atomically registers an immutable evidence snapshot and eligible generation job. A separate Rust worker claims generation work, checks provider-bound transcript-sharing authorization, checkpoints bounded extraction/synthesis, and atomically publishes structured result revisions. Retry/regeneration never invoke transcription. React reads persisted states/results independently of navigation. Suggested titles do not replace user titles; unknown identities/deadlines are not filled from UI placeholders. Minutes are deterministic presentation, not another provider call. Existing broader retrieval and retention proposals below remain future design.

@@ -72,7 +72,7 @@ pub fn open(path: &Path) -> Result<Connection> {
     let version: i64 = tx
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .map_err(db_error)?;
-    if version > 7 {
+    if version > 8 {
         return Err("This database requires a newer application version.".into());
     }
     if version == 0 {
@@ -103,6 +103,11 @@ pub fn open(path: &Path) -> Result<Connection> {
         tx.execute_batch(include_str!("../migrations/0007.sql"))
             .map_err(db_error)?;
     }
+    if version < 8 {
+        tx.execute_batch(include_str!("../migrations/0008.sql"))
+            .map_err(db_error)?;
+    }
+    crate::intelligence::backfill(&tx)?;
     tx.commit().map_err(db_error)?;
     Ok(db)
 }

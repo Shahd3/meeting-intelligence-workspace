@@ -1,5 +1,6 @@
 mod desktop_widget;
 mod detection;
+mod intelligence;
 mod processing;
 mod recording;
 mod storage;
@@ -64,7 +65,11 @@ async fn ai_connection_test(
         if engine.revision() != revision {
             return Err("Settings changed. Review the saved destination before testing.".into());
         }
-        processing::test_connection(&engine, &kind)
+        if kind == "summarization" {
+            intelligence::connection_test(&intelligence::config(&storage::open(&worker.database)?)?)
+        } else {
+            processing::test_connection(&engine, &kind)
+        }
     })
     .await
     .map_err(|_| "Connection test could not finish.")?
@@ -93,14 +98,47 @@ async fn processing_rebind(
     .map_err(|_| "Unable to apply job settings.")?
 }
 #[tauri::command]
+async fn intelligence_export(
+    window: tauri::WebviewWindow,
+    contents: String,
+) -> Result<bool, String> {
+    if window.label() != "main" {
+        return Err("Minutes export belongs to the main window.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || intelligence::export_markdown(contents))
+        .await
+        .map_err(|_| "Minutes export could not finish.")?
+}
+#[tauri::command]
+async fn intelligence_request(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    request: intelligence::Request,
+) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("Intelligence changes belong to the main window.".into());
+    }
+    let worker = app.state::<Arc<intelligence::Pipeline>>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        intelligence::mutate(&mut storage::open(&worker.database)?, request)
+    })
+    .await
+    .map_err(|_| "Unable to update meeting intelligence.")?
+}
+#[tauri::command]
 async fn processing_status(
     app: tauri::AppHandle,
     meeting_id: Option<i64>,
 ) -> Result<processing::View, String> {
     let worker = app.state::<Arc<processing::Pipeline>>().inner().clone();
-    tauri::async_runtime::spawn_blocking(move || worker.status(meeting_id))
-        .await
-        .map_err(|_| "Unable to read processing status.")?
+    let generation = app.state::<Arc<intelligence::Pipeline>>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut view = worker.status(meeting_id)?;
+        view.intelligence.worker_error = generation.error();
+        Ok(view)
+    })
+    .await
+    .map_err(|_| "Unable to read processing status.")?
 }
 #[tauri::command]
 async fn processing_configure(
@@ -255,6 +293,9 @@ pub fn run() {
             );
             app.manage(pipeline.clone());
             pipeline.start();
+            let generation = intelligence::Pipeline::new(database.clone());
+            app.manage(generation.clone());
+            generation.start();
             let widget = Arc::new(desktop_widget::DesktopWidget::new(database));
             app.manage(widget.clone());
             widget.run(app.handle().clone());
@@ -313,6 +354,8 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            intelligence_export,
+            intelligence_request,
             ai_settings_save,
             ai_connection_test,
             processing_rebind,
@@ -345,6 +388,9 @@ pub fn run() {
                     return;
                 }
                 app.state::<Arc<desktop_widget::DesktopWidget>>()
+                    .shutdown
+                    .store(true, std::sync::atomic::Ordering::Release);
+                app.state::<Arc<intelligence::Pipeline>>()
                     .shutdown
                     .store(true, std::sync::atomic::Ordering::Release);
                 app.state::<Arc<processing::Pipeline>>()

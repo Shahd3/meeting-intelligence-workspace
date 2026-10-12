@@ -11,9 +11,10 @@ export function AIProcessingPreferences() {
       {(["transcription", "summarization"] as const).map(item => <button type="button" className={kind === item ? "dark" : "pill"} aria-pressed={kind === item} key={item} onClick={() => setKind(item)}>{item === "transcription" ? "Transcription" : "Summarization"}</button>)}
     </div>
     {kind === "transcription" && data.view && <p role="status" className="muted">Saved preference: {data.view.ai.transcription?.automatic_transcription ? "automatic transcription enabled" : "automatic transcription disabled — enable and save it below before recording"}.</p>}
+    {kind === "summarization" && data.view && <p role="status" className="muted">Saved preference: automatic meeting intelligence {data.view.ai.summarization?.automatic_generation ? "enabled" : "disabled"}.</p>}
     {!data.view ? <p role="status">Loading AI settings…</p> : <AIForm key={`${kind}-${data.view.ai[kind]?.revision || "new"}`} kind={kind} saved={data.view.ai[kind]} />}
     {!!data.view?.ai.credential_cleanup_pending && <p role="alert">Retired credential cleanup is pending. Save settings again to retry; retired credentials cannot authorize new requests.</p>}
-    {(data.error || data.view?.worker_error) && <p className="storage-error" role="alert">{data.error || data.view?.worker_error}</p>}
+    {(data.error || data.view?.worker_error || data.view?.intelligence.worker_error) && <p className="storage-error" role="alert">{data.error || data.view?.worker_error || data.view?.intelligence.worker_error}</p>}
   </section>;
 }
 function AIForm({ kind, saved }: { kind: Kind; saved: AISettings | null }) {
@@ -26,9 +27,11 @@ function AIForm({ kind, saved }: { kind: Kind; saved: AISettings | null }) {
   const [baseUrl, setBaseUrl] = useState(saved?.remote?.base_url || "");
   const [model, setModel] = useState(saved?.remote?.model || "");
   const [format, setFormat] = useState(saved?.remote?.response_format || "verbose_json");
-  const [automatic, setAutomatic] = useState(saved?.automatic_transcription || false);
+  const [outputLanguage, setOutputLanguage] = useState(saved?.output_language || "en");
+  const [generationFormat, setGenerationFormat] = useState(saved?.generation_format || "json_object");
+  const [automatic, setAutomatic] = useState((kind === "transcription" ? saved?.automatic_transcription : saved?.automatic_generation) || false);
   const [automaticReviewed, setAutomaticReviewed] = useState(false);
-  const settingsChanged = () => { if (kind === "transcription") { setAutomatic(false); setAutomaticReviewed(false); } };
+  const settingsChanged = () => { setAutomatic(false); setAutomaticReviewed(false); };
   const [keyAction, setKeyAction] = useState("keep");
   const [testApproved, setTestApproved] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -43,7 +46,7 @@ function AIForm({ kind, saved }: { kind: Kind; saved: AISettings | null }) {
     await data.command("ai_settings_save", { request: {
       kind, mode, local: mode === "local" ? { executable, model: modelPath, language } : null,
       remote: mode === "remote" ? { base_url: baseUrl, model, language: kind === "transcription" ? language : "auto", response_format: kind === "transcription" ? format : "json" } : null,
-      automatic_transcription: kind === "transcription" && automatic, automatic_reviewed: kind === "transcription" && automaticReviewed,
+      automatic_transcription: kind === "transcription" && automatic, automatic_generation: kind === "summarization" && automatic, automatic_reviewed: automaticReviewed, output_language: outputLanguage, generation_format: generationFormat,
       key_action: mode === "local" ? "delete" : keyAction, api_key: keyAction === "replace" ? apiKey : null,
     } });
   };
@@ -55,7 +58,7 @@ function AIForm({ kind, saved }: { kind: Kind; saved: AISettings | null }) {
     finally { setTesting(false); }
   };
   return <>
-    {kind === "summarization" && <p className="muted">Configuration for future OpenAI-compatible chat completions. Meeting summarization is not implemented, and saving these settings sends no meeting content.</p>}
+    {kind === "summarization" && <p className="muted">OpenAI-compatible chat completions generate evidence-backed meeting notes. This provider is independent of transcription. Saving configuration alone sends no meeting content.</p>}
     <form onSubmit={event => { event.preventDefault(); void save(); }}>
       {kind === "transcription" && <label>Transcription provider<select className="select" value={mode} onChange={event => { settingsChanged(); setMode(event.target.value as "local" | "remote"); if (keyInput.current) keyInput.current.value = ""; }}><option value="local">Local Whisper</option><option value="remote">Remote API</option></select></label>}
       {mode === "local" ? <>
@@ -76,12 +79,18 @@ function AIForm({ kind, saved }: { kind: Kind; saved: AISettings | null }) {
         <label className="preference-toggle"><span><strong>Automatically transcribe saved recordings</strong><small>Process new recordings through the background queue</small></span><input type="checkbox" role="switch" checked={automatic} onChange={event => { setAutomatic(event.target.checked); setAutomaticReviewed(event.target.checked); }} /></label>
         <p className={mode === "remote" ? "ai-upload-notice" : "muted"}>{mode === "remote" ? `Enabling and saving authorizes automatic audio uploads and bounded retries to ${baseUrl || "the configured external transcription service"} using ${model || "the selected model"}. Charges may apply.` : "Enabling and saving starts local transcription automatically after recording finalization."} Older recordings and captures already in progress remain manual. Provider changes turn this preference off until you review and save it again.</p>
       </>}
+      {kind === "summarization" && <>
+        <label>Output language<select className="select" value={outputLanguage} onChange={event => { settingsChanged(); setOutputLanguage(event.target.value as "en" | "ar" | "auto"); }}><option value="en">English</option><option value="ar">Arabic</option><option value="auto">Match transcript</option></select></label>
+        <label>Structured output<select className="select" value={generationFormat} onChange={event => { settingsChanged(); setGenerationFormat(event.target.value as "json_object" | "json_schema"); }}><option value="json_object">JSON object (gateway compatibility)</option><option value="json_schema">Strict JSON schema (provider support required)</option></select></label>
+        <label className="preference-toggle"><span><strong>Automatically generate meeting intelligence</strong><small>Analyze new completed transcripts in the background</small></span><input type="checkbox" role="switch" checked={automatic} onChange={event => { setAutomatic(event.target.checked); setAutomaticReviewed(event.target.checked); }} /></label>
+        <p className="ai-upload-notice">Enabling and saving authorizes sharing transcript text and evidence references with {baseUrl || "the configured summarization service"} using {model || "the selected model"}, including bounded retries. Charges may apply. Existing recordings remain manual. Provider or generation-option changes require renewed review.</p>
+      </>}
       <p className="muted">Started jobs retain their settings. Use latest settings in a failed job to restart with a new provider; partial checkpoints are cleared, and original audio is retained.</p>
       <button className="pill" disabled={data.busy || testing}>Save settings</button>
     </form>
     {saved && <div className="ai-connection-test">
       <p className="muted">Tests use saved settings{saved.remote ? `: ${saved.remote.base_url} · ${saved.remote.model}` : ""}. Save edits first.</p>
-      {saved.mode === "remote" && <label className="ai-consent"><input type="checkbox" checked={testApproved} onChange={event => setTestApproved(event.target.checked)} />{kind === "transcription" ? "I authorize a one-second synthetic silence upload and API key transmission to this saved provider. The test may incur API charges." : "I authorize sending this saved API key to GET /models. This checks model access, not chat completions. Provider request charges may apply."}</label>}
+      {saved.mode === "remote" && <label className="ai-consent"><input type="checkbox" checked={testApproved} onChange={event => setTestApproved(event.target.checked)} />{kind === "transcription" ? "I authorize a one-second synthetic silence upload and API key transmission to this saved provider. The test may incur API charges." : "I authorize a synthetic chat-completion request and sending this saved API key to the selected provider. No meeting data is used. API charges may apply."}</label>}
       <button type="button" className="pill" disabled={testing || data.busy || (saved.mode === "remote" && !testApproved)} onClick={() => void test()}>{testing ? "Testing…" : "Test saved connection"}</button>
       {result && <p role="status">{result}</p>}
     </div>}

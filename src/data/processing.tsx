@@ -1,3 +1,4 @@
+import type { IntelligenceView } from "./intelligence";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 export type TranscriptSegment = { text: string; start_ms: number | null; end_ms: number | null; sources: { role: string; start_ms: number | null; end_ms: number | null }[] };
@@ -8,8 +9,8 @@ export type ProcessingJob = {
 };
 export type TranscriptionConfig = { executable: string; model: string; language: string };
 export type RemoteSettings = { base_url: string; model: string; response_format: string; language: string };
-export type AISettings = { mode: "local" | "remote"; revision: string; local: TranscriptionConfig | null; remote: RemoteSettings | null; key_saved: boolean; automatic_transcription: boolean };
-type View = { ai: { transcription: AISettings | null; summarization: AISettings | null; credential_cleanup_pending: number }; jobs: ProcessingJob[]; config: TranscriptionConfig | null; worker_error: string | null; transcript_meeting_id: number | null };
+export type AISettings = { mode: "local" | "remote"; revision: string; local: TranscriptionConfig | null; remote: RemoteSettings | null; key_saved: boolean; automatic_transcription: boolean; automatic_generation: boolean; output_language: "en" | "ar" | "auto"; generation_format: "json_object" | "json_schema" };
+type View = { intelligence: IntelligenceView; ai: { transcription: AISettings | null; summarization: AISettings | null; credential_cleanup_pending: number }; jobs: ProcessingJob[]; config: TranscriptionConfig | null; worker_error: string | null; transcript_meeting_id: number | null };
 type Data = { view: View | null; error: string | null; busy: boolean; selectMeeting: (id: number | null) => void; command: (name: string, args: Record<string, unknown>) => Promise<boolean> };
 const Context = createContext<Data>({ view: null, error: null, busy: false, selectMeeting: () => {}, command: async () => false });
 export const useProcessing = () => useContext(Context);

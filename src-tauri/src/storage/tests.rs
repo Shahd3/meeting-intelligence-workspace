@@ -241,7 +241,7 @@ fn future_schema_is_rejected_without_resetting_data() {
             },
         )
         .unwrap();
-        db.execute_batch("PRAGMA user_version=8").unwrap();
+        db.execute_batch("PRAGMA user_version=9").unwrap();
     }
     assert!(open(&path).is_err());
     {
@@ -254,7 +254,7 @@ fn future_schema_is_rejected_without_resetting_data() {
         assert_eq!(
             db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
                 .unwrap(),
-            8
+            9
         );
     }
     std::fs::remove_file(path).unwrap();

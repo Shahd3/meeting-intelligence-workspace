@@ -67,6 +67,18 @@ pub struct Save {
     pub automatic_transcription: bool,
     #[serde(default)]
     pub automatic_reviewed: bool,
+    #[serde(default)]
+    pub automatic_generation: bool,
+    #[serde(default = "default_language")]
+    pub output_language: String,
+    #[serde(default = "default_format")]
+    pub generation_format: String,
+}
+fn default_language() -> String {
+    "en".into()
+}
+fn default_format() -> String {
+    "json_object".into()
 }
 #[derive(Serialize)]
 pub struct PublicSettings {
@@ -76,6 +88,9 @@ pub struct PublicSettings {
     pub remote: Option<Remote>,
     pub key_saved: bool,
     pub automatic_transcription: bool,
+    pub automatic_generation: bool,
+    pub output_language: String,
+    pub generation_format: String,
 }
 #[derive(Serialize)]
 pub struct View {
@@ -209,6 +224,9 @@ fn public(engine: Engine, vault: &impl Vault, automatic: bool) -> Result<PublicS
             remote: None,
             key_saved: false,
             automatic_transcription: automatic,
+            automatic_generation: false,
+            output_language: "en".into(),
+            generation_format: "json_object".into(),
         },
         Engine::Remote {
             remote, revision, ..
@@ -219,6 +237,9 @@ fn public(engine: Engine, vault: &impl Vault, automatic: bool) -> Result<PublicS
             remote: Some(remote),
             key_saved,
             automatic_transcription: automatic,
+            automatic_generation: false,
+            output_language: "en".into(),
+            generation_format: "json_object".into(),
         },
     })
 }
@@ -236,7 +257,21 @@ pub fn view(db: &Connection) -> Result<View, String> {
             })
             .transpose()?,
         summarization: load(db, "summarization")?
-            .map(|c| public(c, &WindowsVault, false))
+            .map(|c| {
+                let enabled = crate::intelligence::automatic(db, &c)?;
+                let (language, format) = db
+                    .query_row(
+                        "SELECT language,format FROM intelligence_preferences WHERE id=1",
+                        [],
+                        |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+                    )
+                    .map_err(db_error)?;
+                let mut p = public(c, &WindowsVault, false)?;
+                p.automatic_generation = enabled;
+                p.output_language = language;
+                p.generation_format = format;
+                Ok::<PublicSettings, String>(p)
+            })
             .transpose()?,
     })
 }
@@ -262,6 +297,44 @@ pub fn save(db: &mut Connection, mut request: Save, vault: &impl Vault) -> Resul
         .as_ref()
         .and_then(Engine::credential)
         .map(str::to_string);
+    let (old_language, old_format): (String, String) = tx
+        .query_row(
+            "SELECT language,format FROM intelligence_preferences WHERE id=1",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .map_err(db_error)?;
+    let generation_options_unchanged =
+        old_language == request.output_language && old_format == request.generation_format;
+    if request.kind == "summarization" {
+        if !["en", "ar", "auto"].contains(&request.output_language.as_str())
+            || !["json_object", "json_schema"].contains(&request.generation_format.as_str())
+        {
+            return Err(
+                "Select a supported output language and structured response format.".into(),
+            );
+        }
+        let unchanged = request.key_action == "keep"
+            && generation_options_unchanged
+            && matches!((&old,&request.remote),(Some(Engine::Remote{remote,..}),Some(next)) if remote==next);
+        let already = old
+            .as_ref()
+            .map(|e| crate::intelligence::automatic(&tx, e))
+            .transpose()?
+            .unwrap_or(false);
+        if request.automatic_generation && !request.automatic_reviewed && !(already && unchanged) {
+            return Err(
+                "Review and save automatic transcript sharing for this summarization provider."
+                    .into(),
+            );
+        }
+        if request.automatic_generation
+            && (request.key_action == "delete"
+                || (request.key_action == "keep" && old_id.is_none()))
+        {
+            return Err("Save a summarization key before authorizing generation.".into());
+        }
+    }
     let revision = uuid::Uuid::new_v4().to_string();
     let mut new_id = None;
     let mut engine = match request.mode.as_str() {
@@ -333,7 +406,9 @@ pub fn save(db: &mut Connection, mut request: Save, vault: &impl Vault) -> Resul
     };
     // Saving an unchanged form must not invalidate already approved jobs.
     if let Some(previous) = &old {
-        if same_provider(previous, &engine) {
+        if same_provider(previous, &engine)
+            && (request.kind != "summarization" || generation_options_unchanged)
+        {
             match &mut engine {
                 Engine::Local { revision, .. } | Engine::Remote { revision, .. } => {
                     *revision = previous.revision().into()
@@ -378,6 +453,19 @@ pub fn save(db: &mut Connection, mut request: Save, vault: &impl Vault) -> Resul
                 .map_err(db_error)?;
             }
             tx.execute("UPDATE processing_jobs SET state='queued',error=NULL,error_category=NULL WHERE ready=1 AND state='failed' AND error_category='configuration' AND config IS NULL AND attempts<5",[]).map_err(db_error)?;
+        }
+        if request.kind == "summarization" {
+            let prior = old
+                .as_ref()
+                .map(|e| crate::intelligence::automatic(&tx, e))
+                .transpose()?
+                .unwrap_or(false);
+            let same = prior
+                && old
+                    .as_ref()
+                    .map(|e| e.revision() == engine.revision())
+                    .unwrap_or(false);
+            tx.execute("UPDATE intelligence_preferences SET language=?1,format=?2,automatic_revision=?3,after_recording_rowid=CASE WHEN ?4 THEN after_recording_rowid ELSE (SELECT COALESCE(max(rowid),0) FROM recordings) END WHERE id=1",params![request.output_language,request.generation_format,if request.automatic_generation{Some(engine.revision())}else{None},same]).map_err(db_error)?;
         }
         tx.commit().map_err(db_error)
     })();
