@@ -129,3 +129,9 @@ Store large audio artifacts separately from SQLite and access them through app-o
 Keep Windows capture, desktop UI, local paths, identity, credentials, and SQLite access behind adapters. A future host may supply different identity, storage, or AI providers without changing the core use-case contracts. Multi-user authorization, tenant isolation, synchronization, and remote job execution would require new architectural decisions; single-user project filtering is not a multi-tenant security design.
 
 No company repositories, infrastructure, credentials, endpoints, source code, prompts, or assets are required or included. Integration contracts can be explored using synthetic data in this independent repository.
+
+## Implemented desktop widget boundary
+
+One independent native Tauri widget window is managed by a Rust coordinator and observes the existing recording service. Main and widget controls share recording identity/state; Rust serializes and latches Stop requests across webviews. Widget visibility, drag behavior, main-window restoration, and optional detection belong to desktop adapters, separate from reusable intelligence services. Normal app exit remains blocked during capture/finalization.
+
+Optional local meeting detection is off by default; only its boolean preference is persisted in SQLite migration 0003. The five-second scanner combines supported process/window identification with existing WASAPI microphone-session activity where available, using an explicit Zoom call-window fallback. It never opens an audio stream or confirms meeting attendance. Suggestions require user action and always open recording setup. Observations and suppression keys remain transient. See [Desktop widget and detection](DESKTOP_WIDGET.md) for implemented signals, false-positive/false-negative limitations, and tested behavior.

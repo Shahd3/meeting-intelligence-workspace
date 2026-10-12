@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { useDesktopWidget } from "../data/desktopWidget";
+import { RecordingPreferences } from "../components/RecordingPreferences";
 import { AppShell } from "../components/AppShell";
 import { AboutDemo, CreateWorkspaceForm } from "../components/DemoDialogs";
 import { needsRecovery, savedMeetingAvailable } from "../data/recordingFlow";
@@ -17,12 +20,13 @@ import { WorkspaceDetail } from "../pages/WorkspaceDetail";
 import { WorkspacesPage } from "../pages/WorkspacesPage";
 
 type Location = { page: Page; meetingId?: number; workspaceId?: number };
-type Dialog = { kind: "about" | "create" | "record" } | { kind: "editWorkspace"; workspace: Workspace } | { kind: "editMeeting"; meeting: Meeting } | { kind: "deleteWorkspace" | "deleteMeeting"; id: number };
-const dialogTitles = { about: "A thoughtful space to gather.", create: "A new place for your ideas.", record: "Make room for the conversation.", editWorkspace: "Edit workspace", editMeeting: "Edit meeting", deleteWorkspace: "Delete workspace?", deleteMeeting: "Delete meeting?" };
+type Dialog = { kind: "about" | "settings" | "create" | "record" } | { kind: "editWorkspace"; workspace: Workspace } | { kind: "editMeeting"; meeting: Meeting } | { kind: "deleteWorkspace" | "deleteMeeting"; id: number };
+const dialogTitles = { settings: "Recording preferences", about: "A thoughtful space to gather.", create: "A new place for your ideas.", record: "Make room for the conversation.", editWorkspace: "Edit workspace", editMeeting: "Edit meeting", deleteWorkspace: "Delete workspace?", deleteMeeting: "Delete meeting?" };
 
 export function App() {
   const { meetings, workspaces, completed, recordings, ready, busy, error, run } = useLocalData();
   const recorder = useRecording();
+  const desktop = useDesktopWidget();
   const [location, setLocation] = useState<Location>({ page: "home" });
   const [tab, setTab] = useState<MeetingTab>("Summary");
   const [query, setQuery] = useState("");
@@ -97,6 +101,12 @@ export function App() {
   const openWorkspace = (id: number) => setLocation({ page: "spaces", workspaceId: id });
   const complete = (key: string, value: boolean) => { void run({ kind: "complete", key, value }); };
   const record = () => { setRecordingOpen(value => value + 1); setDialog({ kind: "record" }); };
+  useEffect(() => {
+    if (!desktop.view?.setup_requested) return;
+    void invoke<boolean>("desktop_widget_take_setup").then(requested => {
+      if (requested) { setRecordingOpen(value => value + 1); setDialog({ kind: "record" }); }
+    }).catch(cause => setToast({ id: Date.now(), text: String(cause) }));
+  }, [desktop.view?.setup_requested]);
   const close = () => { if (!busy) setDialog(null); };
   const createWorkspace = async (name: string, description: string, color: Color) => {
     const editing = dialog?.kind === "editWorkspace" ? dialog.workspace : null;
@@ -128,7 +138,7 @@ export function App() {
   };
 
   return <>
-    <AppShell page={location.page} dashboard={dashboard} onNavigate={navigate} onAbout={() => setDialog({ kind: "about" })}>
+    <AppShell page={location.page} dashboard={dashboard} onNavigate={navigate} onAbout={() => setDialog({ kind: "about" })} onSettings={() => setDialog({ kind: "settings" })}>
       {!ready ? <section className="panel empty" role="status"><h1>{busy ? "Opening your local workspace…" : "Your local workspace is unavailable."}</h1>{!busy && <button className="dark" onClick={() => void run({ kind: "load" })}>Try again</button>}</section>
         : meeting ? <MeetingDetail recordings={recordings.filter(item => item.meeting_id === meeting.id)} meeting={meeting} workspaces={workspaces} tab={tab} completed={completed} onTab={setTab} onBack={() => setLocation(current => ({ ...current, meetingId: undefined }))} onAssign={project => {
         void updateMeeting({ ...meeting, project });
@@ -143,10 +153,12 @@ export function App() {
     {recorder.active && dialog?.kind !== "record" && <div className="recording-banner" role="status"><span>{recorder.status.state} · {Math.floor(recorder.status.elapsed_ms / 1000)}s{recorder.status.warning && <small className="recording-banner-warning">{recorder.status.warning}</small>}</span><button className="pill" onClick={record}>Open recording controls</button></div>}
     {saveError && dialog?.kind !== "record" && <div className="recording-alert" role="alert"><p>{saveError}</p><button className="pill" onClick={retrySaved}>Retry loading saved recording</button></div>}
     {((recorder.status.error && observedRecording.current === recorder.status.id) || recorder.error) && dialog?.kind !== "record" && <div className="recording-alert" role="alert"><p>{recorder.status.error || recorder.error}</p><button className="pill" disabled={recorder.active || recorder.busy || busy} onClick={() => void recover()}>Check recording recovery</button></div>}
+    {desktop.view?.widget_error && <div className="recording-alert" role="alert">{desktop.view.widget_error}</div>}
     {busy && <div className="storage-busy" role="status" aria-live="polite">{ready ? "Saving local data…" : "Loading local data…"}</div>}
     {error && <div className="storage-error" role="alert"><p>{error}</p><button className="pill" disabled={busy} onClick={() => void run({ kind: "load" })}>Reload data</button></div>}
     {dialog && <Modal title={dialogTitles[dialog.kind]} onClose={close}>
       <fieldset className="dialog-fields" disabled={busy}>
+      {dialog.kind === "settings" && <RecordingPreferences />}
       {dialog.kind === "about" && <AboutDemo onClose={close} />}
       {dialog.kind === "create" && <CreateWorkspaceForm onSave={createWorkspace} onClose={close} />}
       {dialog.kind === "editWorkspace" && <CreateWorkspaceForm initial={dialog.workspace} onSave={createWorkspace} onClose={close} />}

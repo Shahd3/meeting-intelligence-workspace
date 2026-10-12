@@ -72,7 +72,7 @@ pub fn open(path: &Path) -> Result<Connection> {
     let version: i64 = tx
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .map_err(db_error)?;
-    if version > 2 {
+    if version > 3 {
         return Err("This database requires a newer application version.".into());
     }
     if version == 0 {
@@ -81,6 +81,10 @@ pub fn open(path: &Path) -> Result<Connection> {
     }
     if version < 2 {
         tx.execute_batch(include_str!("../migrations/0002.sql"))
+            .map_err(db_error)?;
+    }
+    if version < 3 {
+        tx.execute_batch(include_str!("../migrations/0003.sql"))
             .map_err(db_error)?;
     }
     tx.commit().map_err(db_error)?;
@@ -296,3 +300,21 @@ fn snapshot(db: &Connection) -> Result<Snapshot> {
 
 #[cfg(test)]
 mod tests;
+
+/// Only the opt-in preference is persisted; detection observations are transient.
+pub fn detection_enabled(db: &Connection) -> Result<bool> {
+    db.query_row(
+        "SELECT meeting_detection FROM desktop_preferences WHERE id=1",
+        [],
+        |row| row.get(0),
+    )
+    .map_err(db_error)
+}
+pub fn set_detection_enabled(db: &Connection, enabled: bool) -> Result<()> {
+    db.execute(
+        "UPDATE desktop_preferences SET meeting_detection=?1 WHERE id=1",
+        [enabled],
+    )
+    .map_err(db_error)?;
+    Ok(())
+}

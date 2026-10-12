@@ -3,6 +3,7 @@ use fs2::FileExt;
 use std::{
     path::PathBuf,
     sync::{
+        atomic::{AtomicBool, Ordering},
         mpsc::{self, Receiver, SyncSender},
         Arc, Mutex,
     },
@@ -68,7 +69,7 @@ impl Default for Status {
         }
     }
 }
-#[derive(Clone, Copy, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Action {
     Pause,
@@ -85,6 +86,7 @@ pub struct Recorder {
     _ownership: File,
     status: Arc<Mutex<Status>>,
     session: Mutex<Option<Session>>,
+    stop_requested: AtomicBool,
 }
 impl Recorder {
     pub fn new(root: PathBuf, db_path: PathBuf) -> Result<Self> {
@@ -108,6 +110,7 @@ impl Recorder {
             _ownership: ownership,
             status: Arc::new(Mutex::new(Status::default())),
             session: Mutex::new(None),
+            stop_requested: AtomicBool::new(false),
         })
     }
     pub fn status(&self) -> Result<Status> {
@@ -149,6 +152,7 @@ impl Recorder {
         if !initial.state.allows(State::Starting) {
             return Err("Cannot start recording from the current state.".into());
         }
+        self.stop_requested.store(false, Ordering::Release);
         initial = Status {
             state: State::Starting,
             id: Some(id.clone()),
@@ -187,6 +191,13 @@ impl Recorder {
             .lock()
             .map_err(|_| "Recording control is unavailable.")?;
         let s = self.status()?;
+        if self.stop_requested.load(Ordering::Acquire) {
+            return if action == Action::Stop {
+                Ok(s)
+            } else {
+                Err("Saving is already in progress.".into())
+            };
+        }
         let allowed = matches!(
             (s.state, action),
             (State::Recording, Action::Pause | Action::Stop)
@@ -195,12 +206,18 @@ impl Recorder {
         if !allowed {
             return Err("This recording action is not available in the current state.".into());
         }
-        session
-            .as_ref()
-            .ok_or("Recording worker is unavailable.")?
-            .sender
-            .try_send(action)
-            .map_err(|_| "A recording action is already pending or the worker stopped.")?;
+        let worker = session.as_ref().ok_or("Recording worker is unavailable.")?;
+        // The session mutex serializes controls across every webview. Latch Stop
+        // before sending so a consumed queue slot cannot admit a second request.
+        if action == Action::Stop {
+            self.stop_requested.store(true, Ordering::Release);
+        }
+        if worker.sender.try_send(action).is_err() {
+            if action == Action::Stop {
+                self.stop_requested.store(false, Ordering::Release);
+            }
+            return Err("A recording action is already pending or the worker stopped.".into());
+        }
         Ok(s)
     }
     pub fn recover(&self) -> Result<()> {
@@ -582,6 +599,30 @@ mod tests {
                 .contains("already active"));
             assert!(recorder.session.lock().unwrap().is_none());
         }
+        drop(recorder);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+    #[test]
+    fn stop_from_two_windows_is_idempotent_even_after_queue_consumption() {
+        let directory =
+            std::env::temp_dir().join(format!("miw-stop-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir(&directory).unwrap();
+        let recorder =
+            Recorder::new(directory.join("recordings"), directory.join("test.sqlite3")).unwrap();
+        recorder.status.lock().unwrap().state = State::Recording;
+        let (sender, receiver) = mpsc::sync_channel(1);
+        *recorder.session.lock().unwrap() = Some(Session {
+            sender,
+            thread: std::thread::spawn(|| {}),
+        });
+        recorder.control(Action::Stop).unwrap();
+        assert!(matches!(receiver.try_recv(), Ok(Action::Stop)));
+        recorder.control(Action::Stop).unwrap();
+        assert!(receiver.try_recv().is_err());
+        assert!(recorder.control(Action::Pause).is_err());
+        recorder.status.lock().unwrap().state = State::Saved;
+        recorder.control(Action::Stop).unwrap();
+        assert!(receiver.try_recv().is_err());
         drop(recorder);
         std::fs::remove_dir_all(directory).unwrap();
     }

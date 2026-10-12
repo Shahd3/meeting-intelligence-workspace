@@ -51,3 +51,9 @@ The database starts empty at `%APPDATA%/dev.meetingintelligence.workspace/worksp
 See [Windows recording implementation and limitations](docs/WINDOWS_RECORDING.md) for recovery, audio device requirements, storage size, and manual validation. Captured audio is retained indefinitely; automatic retention and encryption are not implemented. Windows desktop microphone permissions must already allow capture; the app does not change system settings.
 
 See [Architecture](docs/ARCHITECTURE.md), [Product scope](docs/PRODUCT_SCOPE.md), and [Durable processing proposal](docs/adr/0002-durable-meeting-processing.md) for the future direction.
+
+## Floating recording controls and optional meeting suggestions
+
+During capture, a compact draggable widget stays above ordinary desktop windows, including while the main app is minimized. Pause/Resume and Stop & Save control the existing Rust recording session. Saving hides the widget; errors retain access to recovery.
+
+Use the gear button → Recording preferences to opt into local automatic meeting detection (disabled initially). Likely Teams, Zoom, or Google Meet calls can trigger a suggestion. Start Recording opens setup for your title and audio choices; capture always requires your confirmation. Detection reads window identity and existing microphone-session metadata, never microphone audio. See [Desktop widget and detection](docs/DESKTOP_WIDGET.md) for signal limitations, privacy boundaries, and validation.

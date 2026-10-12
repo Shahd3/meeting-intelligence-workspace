@@ -6,7 +6,7 @@ mod windows;
 pub use playback::response;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
-pub use service::{Action, Recorder, Status};
+pub use service::{Action, Recorder, State as RecordingState, Status};
 use std::{
     fs::{File, OpenOptions},
     io::Write,
