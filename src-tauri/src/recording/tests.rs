@@ -23,6 +23,7 @@ impl Fixture {
         let record = Recording {
             id: uuid::Uuid::new_v4().to_string(),
             meeting_id: None,
+            title_source: "manual".into(),
             title: "Synthetic recording".into(),
             state: "starting".into(),
             elapsed_ms: 1000,
@@ -374,4 +375,43 @@ fn unavailable_requested_loopback_fails_without_creating_a_microphone_recording(
     let data = storage::apply(&mut db, Request::Load).unwrap();
     assert!(data.meetings.is_empty());
     assert!(data.recordings.is_empty());
+}
+
+#[test]
+fn optional_title_preserves_explicit_placeholder_and_finalizes_provenance() {
+    assert_eq!(
+        initial_title("  "),
+        ("Untitled Meeting".into(), "system".into())
+    );
+    assert_eq!(
+        initial_title("Untitled Meeting"),
+        ("Untitled Meeting".into(), "manual".into())
+    );
+    let f = Fixture::new();
+    let mut db = storage::open(&f.db_path).unwrap();
+    let mut record = f.pending(&mut db);
+    (record.title, record.title_source) = initial_title("");
+    Selection {
+        microphone: true,
+        system: false,
+        microphone_device: None,
+        system_device: None,
+        title: String::new(),
+    }
+    .validate()
+    .unwrap();
+    record.tracks[0].frames = 48000;
+    record.tracks[0].filename = "microphone.wav".into();
+    record.state = "saved".into();
+    record.complete = true;
+    db.execute(
+        "UPDATE recordings SET title=?1,title_source=?2 WHERE id=?3",
+        params![record.title, record.title_source, record.id],
+    )
+    .unwrap();
+    commit_result(&mut db, &mut record).unwrap();
+    let source: String = db
+        .query_row("SELECT title_source FROM meetings", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(source, "system");
 }

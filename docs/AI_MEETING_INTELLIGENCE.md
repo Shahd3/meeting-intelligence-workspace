@@ -16,7 +16,7 @@ Migration 0008 keeps recordings, transcripts, user titles, legacy meeting fields
 
 Schema version 1 contains suggested title, executive summary, workstream topics with detailed points, decisions, actions, follow-ups, open questions, and evidence-supported attendees. Facts reference original segment IDs and exact quotes. Owners/deadlines are nullable and require separate evidence containing their verbatim wording; dates are not guessed or normalized. Mentioned names do not establish attendance; audio tracks are not people. Unsupported schema versions, missing fields, excessive output, nonexistent references, and quotes absent from source are rejected. Structural validation does not prove that every paraphrase is entailed, a person was present, or every material topic was retained; human review and model-specific quality evaluation remain necessary.
 
-The user title is never replaced automatically. Suggested titles are displayed separately. Each recording transcript is analyzed separately; multiple recordings are not silently combined. Attendee corrections are meeting-level user assertions, remain separate from generated evidence, and survive regeneration. Regeneration creates a new immutable result; the previous successful result remains selected until replacement commits. Old action completion rows remain in SQLite and are not guessed onto newly generated actions. A history-selection UI and semantic task reconciliation are future work.
+Migration 0009 records title provenance (manual, system, or AI). An empty recording title becomes a system-owned Untitled Meeting. The first selected successful AI result may replace that placeholder atomically; explicit user titles and edits are never overwritten, including edits during generation. Existing records are conservatively treated as manual. Later regeneration preserves the adopted title. Details show one editable meeting title, without a separate suggested-title section. Each recording transcript is analyzed separately; multiple recordings are not silently combined. Attendee corrections are meeting-level user assertions, remain separate from generated evidence, and survive regeneration. Regeneration creates a new immutable result; the previous successful result remains selected until replacement commits. Old action completion rows remain in SQLite and are not guessed onto newly generated actions. A history-selection UI and semantic task reconciliation are future work.
 
 ## Worker and recovery
 
@@ -97,3 +97,33 @@ Updated:
 - `docs/AI_PROVIDERS.md`
 
 Ignored test profiles/build output are outside this source inventory. No changes were staged or committed.
+
+## Note Taker UI/workflow refinement
+
+Meeting Details now has only Summary, Action Items, and Transcript. Summary includes detailed discussions, decisions, follow-ups and unresolved proposals without visible source badges; evidence stays persisted and validated. Meeting playback and the library's bottom retained-audio section are removed. Recovery remains available in the contextual interruption notice and Recording Preferences → Recording recovery and retained audio.
+
+The readiness indicator requires a completed generation job with a persisted result receipt and no pending/failed transcription or active generation work. Completed transcription no longer displays a ready badge. Polling keeps status current without opening or refreshing details. Automatic generation still registers in the same transaction as successful transcription, with existing provider-revision consent, eligibility watermark, duplicate prevention and worker recovery unchanged.
+
+Generate MoM at the top-right renders persisted intelligence and attendee corrections on the Rust backend. It saves UTF-8 Markdown directly into the current user's Downloads folder with safe descriptive filenames. Atomic create-new file handling allocates a numeric suffix on collisions and never overwrites an existing document. The command rejects pending/failed processing and performs no provider request. The old Save-dialog export command remains available internally for compatibility.
+
+Validation: 69 standard Rust tests passed (one optional real-Whisper test not run in this refinement), including actual STT and generation workers using local mock APIs without details navigation. Readiness/three-section and existing frontend tests passed; native synthetic-profile testing confirmed the three tabs, clean summary, recording icon, and a saved Downloads Markdown file with Arabic, decisions and actions. Filesystem tests cover export collisions and source preservation. Live configured-provider processing, real-device end-to-end recording, small-window/display scaling, and recovery UI on an actual interrupted session remain manual checks. No real data was uploaded. The synthetic Downloads test file was retained for review.
+
+Files changed for the UI/workflow refinement: `src/components/AppShell.tsx`, `src/pages/NoteTakerPage.tsx`, `src/pages/MeetingDetail.tsx`, `src/components/MeetingIntelligence.tsx`, `src/components/MeetingRow.tsx`, `src/components/Transcription.tsx`, `src/app/App.tsx`, `src/data/intelligence.ts`, `src/data/processing.tsx`, `src/data/types.ts`, `src/styles/global.css`, `src-tauri/src/intelligence/mod.rs`, `src-tauri/src/intelligence/download.rs` (new), `src-tauri/src/intelligence/tests.rs`, `src-tauri/src/lib.rs`, `tests/intelligence.test.mjs`, `README.md`, and this document.
+
+## Navigation, title, and details refinement
+
+Home and Workspaces use consistent house/folder SVGs alongside the recording icon. English content uses start alignment; explicit Arabic RTL remains intact. Shared accessible trash buttons retain confirmation and existing deletion rules. A compact Notes ready badge appears beside meeting headings only for persisted completed notes.
+
+Optional Summary subsections filter whitespace, null text and common empty placeholders at presentation time. Valid discussion points remain visible even when a topic heading is absent. Stored results, citations, action ordinals/completion and MoM data are preserved. Recording titles are optional; migration 0009 and the transactional title policy above protect user edits and older records. Completion status refreshes the meeting read model so titles update across screens.
+
+Validation for this refinement: 72 Rust tests passed serially; one optional real local Whisper test was ignored. Thirteen frontend tests, TypeScript, production frontend build, Rust check, formatting check and desktop executable build passed. Regression tests cover empty capture titles, persisted provenance, AI adoption, edits during generation (including a user-entered placeholder), stale non-title updates and legacy title protection. The Windows loopback mock server explicitly resets accepted sockets to blocking mode to avoid inherited nonblocking read failures. No real external provider was contacted. Latest visual layout, live microphone capture with a blank title, display scaling and interactive delete confirmation still require desktop review.
+
+Files changed for this refinement (previous uncommitted workflow changes remain preserved):
+
+- `src/components/Icons.tsx` (new), `AppShell.tsx`, `RecordingPanel.tsx`, `EditMeetingForm.tsx`, `MeetingIntelligence.tsx`, `MeetingRow.tsx`
+- `src/pages/MeetingDetail.tsx`, `NoteTakerPage.tsx`, `WorkspaceDetail.tsx`
+- `src/app/App.tsx`, `src/data/intelligence.ts`, `src/data/repository.ts`, `src/styles/global.css`
+- `src-tauri/migrations/0009.sql` (new), `src-tauri/src/storage.rs`, `src-tauri/src/storage/tests.rs`
+- `src-tauri/src/recording/mod.rs`, `service.rs`, `tests.rs`
+- `src-tauri/src/intelligence/worker.rs`, `tests.rs`, `src-tauri/src/processing/ai_tests.rs`
+- `tests/intelligence.test.mjs`, `README.md`, this document

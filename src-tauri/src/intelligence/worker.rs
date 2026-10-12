@@ -260,6 +260,17 @@ pub(super) fn finish(
         .map_err(db_error)?;
     }
     tx.execute("INSERT INTO meeting_intelligence_selection(meeting_id,result_id) SELECT meeting_id,id FROM intelligence_jobs WHERE id=?1 ON CONFLICT(meeting_id) DO UPDATE SET result_id=excluded.result_id WHERE (SELECT rowid FROM intelligence_jobs WHERE id=excluded.result_id)>(SELECT rowid FROM intelligence_jobs WHERE id=meeting_intelligence_selection.result_id)",[&job.id]).map_err(db_error)?;
+    // Only the newly selected result may assign a title. The transaction serializes
+    // against manual edits and never changes a manual title or recording identity.
+    let suggested = notes.suggested_title.text.trim();
+    if !suggested.is_empty()
+        && suggested.chars().count() <= 90
+        && !suggested.chars().any(char::is_control)
+        && !["untitled meeting", "none", "n/a", "not available"]
+            .contains(&suggested.to_lowercase().as_str())
+    {
+        tx.execute("UPDATE meetings SET title=?1,title_source='ai' WHERE title_source='system' AND id=(SELECT meeting_id FROM intelligence_jobs WHERE id=?2) AND EXISTS(SELECT 1 FROM meeting_intelligence_selection WHERE result_id=?2)",params![suggested,job.id]).map_err(db_error)?;
+    }
     tx.execute("UPDATE intelligence_jobs SET state='completed',stage='complete',owner=NULL,error=NULL,error_category=NULL,completed_at=unixepoch(),updated_at=unixepoch() WHERE id=?1 AND owner=?2",params![job.id,job.owner]).map_err(db_error)?;
     tx.commit().map_err(db_error)
 }

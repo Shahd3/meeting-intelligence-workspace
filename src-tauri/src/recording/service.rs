@@ -322,10 +322,12 @@ fn run(
     let _com = windows::Com::enter()?;
     // Open every requested endpoint before starting any capture.
     let sources = windows::open(&selection)?;
+    let (title, title_source) = super::initial_title(&selection.title);
     let mut record = Recording {
         id: id.into(),
         meeting_id: None,
-        title: selection.title.trim().into(),
+        title,
+        title_source,
         state: "starting".into(),
         elapsed_ms: 0,
         recovered: false,

@@ -1,6 +1,8 @@
 //! Transcript-only intelligence: durable orchestration independent of capture and UI.
 mod chat;
+mod download;
 mod export;
+pub use download::meeting as download_minutes;
 pub use export::markdown as export_markdown;
 pub mod contract;
 #[cfg(test)]
@@ -158,6 +160,7 @@ pub fn mutate(db: &mut Connection, request: Request) -> Result<()> {
 }
 #[derive(Serialize)]
 pub struct Job {
+    pub has_result: bool,
     pub id: String,
     pub meeting_id: i64,
     pub transcript_id: String,
@@ -220,10 +223,11 @@ pub struct View {
     pub worker_error: Option<String>,
 }
 pub fn view(db: &Connection, meeting: Option<i64>, worker_error: Option<String>) -> Result<View> {
-    let mut q=db.prepare("SELECT id,meeting_id,transcript_id,state,stage,attempts,requests,error,next_attempt_at FROM intelligence_jobs ORDER BY rowid").map_err(db_error)?;
+    let mut q=db.prepare("SELECT id,meeting_id,transcript_id,state,stage,attempts,requests,error,next_attempt_at,EXISTS(SELECT 1 FROM meeting_intelligence r WHERE r.id=intelligence_jobs.id) FROM intelligence_jobs ORDER BY rowid").map_err(db_error)?;
     let jobs = q
         .query_map([], |r| {
             Ok(Job {
+                has_result: r.get(9)?,
                 id: r.get(0)?,
                 meeting_id: r.get(1)?,
                 transcript_id: r.get(2)?,

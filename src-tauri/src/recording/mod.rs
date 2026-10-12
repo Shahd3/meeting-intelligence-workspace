@@ -38,11 +38,8 @@ impl Selection {
         if !self.microphone && !self.system {
             return Err("Choose at least one audio source.".into());
         }
-        if self.title.trim().is_empty()
-            || self.title.chars().count() > 90
-            || self.title.contains('\0')
-        {
-            return Err("Enter a meeting title of at most 90 characters.".into());
+        if self.title.chars().count() > 90 || self.title.contains('\0') {
+            return Err("Meeting titles must be at most 90 characters.".into());
         }
         for id in [&self.microphone_device, &self.system_device]
             .into_iter()
@@ -65,10 +62,22 @@ pub struct Track {
     pub sample_rate: u32,
     pub channels: u16,
 }
+fn manual_title_source() -> String {
+    "manual".into()
+}
+pub(crate) fn initial_title(title: &str) -> (String, String) {
+    if title.trim().is_empty() {
+        ("Untitled Meeting".into(), "system".into())
+    } else {
+        (title.trim().into(), "manual".into())
+    }
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Recording {
     pub id: String,
     pub meeting_id: Option<i64>,
+    #[serde(default = "manual_title_source")]
+    pub title_source: String,
     pub title: String,
     pub state: String,
     pub elapsed_ms: u64,
@@ -82,12 +91,13 @@ fn db_error(_: rusqlite::Error) -> String {
     "Recording metadata could not be saved. Audio files were retained; retry recovery after checking disk access.".into()
 }
 pub fn list(db: &Connection) -> Result<Vec<Recording>> {
-    let mut statement=db.prepare("SELECT id,meeting_id,title,state,elapsed_ms,recovered,complete,warning,created_at FROM recordings ORDER BY created_at DESC").map_err(db_error)?;
+    let mut statement=db.prepare("SELECT id,meeting_id,title,state,elapsed_ms,recovered,complete,warning,created_at,title_source FROM recordings ORDER BY created_at DESC").map_err(db_error)?;
     let mut recordings = statement
         .query_map([], |r| {
             Ok(Recording {
                 id: r.get(0)?,
                 meeting_id: r.get(1)?,
+                title_source: r.get(9)?,
                 title: r.get(2)?,
                 state: r.get(3)?,
                 elapsed_ms: r.get::<_, i64>(4)? as u64,
@@ -124,8 +134,8 @@ pub fn list(db: &Connection) -> Result<Vec<Recording>> {
 fn register(db: &mut Connection, recording: &Recording) -> Result<()> {
     let tx = db.transaction().map_err(db_error)?;
     tx.execute(
-        "INSERT INTO recordings(id,title,state) VALUES (?1,?2,'starting')",
-        params![recording.id, recording.title],
+        "INSERT INTO recordings(id,title,state,title_source) VALUES (?1,?2,'starting',?3)",
+        params![recording.id, recording.title, recording.title_source],
     )
     .map_err(db_error)?;
     for track in &recording.tracks {
@@ -178,7 +188,7 @@ fn commit_result(db: &mut Connection, recording: &mut Recording) -> Result<()> {
     } else {
         let seconds = recording.elapsed_ms / 1000;
         let duration = format!("{:02}:{:02}", seconds / 60, seconds % 60);
-        tx.execute("INSERT INTO meetings(title,date,duration,summary,highlights,decision,actions,speakers) VALUES (?1,date('now'),?2,'','[]','','[]','[]')",params![recording.title,duration]).map_err(db_error)?;
+        tx.execute("INSERT INTO meetings(title,date,duration,summary,highlights,decision,actions,speakers,title_source) VALUES (?1,date('now'),?2,'','[]','','[]','[]',?3)",params![recording.title,duration,recording.title_source]).map_err(db_error)?;
         tx.last_insert_rowid()
     };
     tx.execute("UPDATE recordings SET meeting_id=?1,state=?2,elapsed_ms=?3,recovered=?4,complete=?5,warning=?6,finalized=1 WHERE id=?7",params![meeting,recording.state,recording.elapsed_ms as i64,recording.recovered,recording.complete,recording.warning,recording.id]).map_err(db_error)?;
@@ -273,6 +283,7 @@ fn recover(db: &mut Connection, root: &Path) -> Result<()> {
                     || saved.tracks.len() != record.tracks.len()
                     || !["saved", "failed"].contains(&saved.state.as_str())
                     || saved.elapsed_ms > 14_400_000
+                    || !["manual", "system"].contains(&saved.title_source.as_str())
                     || saved.title.trim().is_empty()
                     || saved.title.chars().count() > 90
                     || saved.title.contains('\0')

@@ -89,9 +89,15 @@ fn meeting_crud_assignment_and_workspace_deletion() {
     m.project = second;
     m.title = "Moved".into();
     assert_eq!(
-        apply(&mut db, Request::UpdateMeeting { meeting: m.clone() })
-            .unwrap()
-            .meetings[0]
+        apply(
+            &mut db,
+            Request::UpdateMeeting {
+                meeting: m.clone(),
+                title_edited: None
+            }
+        )
+        .unwrap()
+        .meetings[0]
             .project,
         second
     );
@@ -144,16 +150,29 @@ fn invalid_writes_do_not_change_existing_data() {
     )
     .unwrap();
     m.project = 999;
-    assert!(apply(&mut db, Request::UpdateMeeting { meeting: m.clone() }).is_err());
+    assert!(apply(
+        &mut db,
+        Request::UpdateMeeting {
+            meeting: m.clone(),
+            title_edited: None
+        }
+    )
+    .is_err());
     let data = apply(&mut db, Request::Load).unwrap();
     assert_eq!(data.meetings[0].project, 0);
     assert!(data.completed[&format!("{}-0", m.id)]);
     m.project = 0;
     m.actions = vec!["Different action".into()];
-    assert!(apply(&mut db, Request::UpdateMeeting { meeting: m })
-        .unwrap()
-        .completed
-        .is_empty());
+    assert!(apply(
+        &mut db,
+        Request::UpdateMeeting {
+            meeting: m,
+            title_edited: None
+        }
+    )
+    .unwrap()
+    .completed
+    .is_empty());
     assert!(apply(
         &mut db,
         Request::Complete {
@@ -241,7 +260,7 @@ fn future_schema_is_rejected_without_resetting_data() {
             },
         )
         .unwrap();
-        db.execute_batch("PRAGMA user_version=9").unwrap();
+        db.execute_batch("PRAGMA user_version=10").unwrap();
     }
     assert!(open(&path).is_err());
     {
@@ -254,7 +273,7 @@ fn future_schema_is_rejected_without_resetting_data() {
         assert_eq!(
             db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
                 .unwrap(),
-            9
+            10
         );
     }
     std::fs::remove_file(path).unwrap();
@@ -267,18 +286,13 @@ fn desktop_preferences_migrate_without_changing_existing_meetings() {
     std::fs::create_dir(&directory).unwrap();
     let path = directory.join("test.sqlite3");
     {
-        let mut db = Connection::open(&path).unwrap();
+        let db = Connection::open(&path).unwrap();
         db.execute_batch(include_str!("../../migrations/0001.sql"))
             .unwrap();
         db.execute_batch(include_str!("../../migrations/0002.sql"))
             .unwrap();
-        apply(
-            &mut db,
-            Request::CreateMeeting {
-                meeting: meeting(0),
-            },
-        )
-        .unwrap();
+        // Seed the historical schema without the current read model, then migrate.
+        db.execute("INSERT INTO meetings(title,date,duration,summary,highlights,decision,actions,speakers) VALUES ('Untitled Meeting','','','','[]','','[]','[]')",[]).unwrap();
     }
     {
         let db = open(&path).unwrap();

@@ -1,3 +1,6 @@
+import { DeleteButton } from "../components/Icons";
+import { useProcessing } from "../data/processing";
+import { RecordingPlayback } from "../components/RecordingPlayback";
 import { TranscriptionPreferences } from "../components/Transcription";
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -8,7 +11,6 @@ import { AboutDemo, CreateWorkspaceForm } from "../components/DemoDialogs";
 import { needsRecovery, savedMeetingAvailable } from "../data/recordingFlow";
 import { useRecording } from "../data/recording";
 import { RecordingPanel } from "../components/RecordingPanel";
-import { RecordingPlayback } from "../components/RecordingPlayback";
 import { Modal } from "../components/Modal";
 import { useLocalData } from "../data/useLocalData";
 import { EditMeetingForm } from "../components/EditMeetingForm";
@@ -26,6 +28,10 @@ const dialogTitles = { settings: "Recording preferences", about: "A thoughtful s
 
 export function App() {
   const { meetings, workspaces, completed, recordings, ready, busy, error, run } = useLocalData();
+  const processing = useProcessing();
+  const titleReceipts = processing.view?.intelligence.jobs.filter(j => j.state === "completed" && j.has_result).map(j => j.id).join("|") || "";
+  const refreshedTitles = useRef("");
+  useEffect(() => { if (ready && !busy && titleReceipts && refreshedTitles.current !== titleReceipts) { refreshedTitles.current = titleReceipts; void run({ kind: "load" }); } }, [ready, busy, titleReceipts, run]);
   const recorder = useRecording();
   const desktop = useDesktopWidget();
   const [location, setLocation] = useState<Location>({ page: "home" });
@@ -67,7 +73,7 @@ export function App() {
     if (!await recorder.recover()) return;
     if (await run({ kind: "load" })) {
       observedRecording.current = null; setDialog(null); setLocation({ page: "notes" }); setQuery(""); setFilter("all");
-      setToast({ id: Date.now(), text: "Recovery checked. Retained audio is available in Note Taker." });
+      setToast({ id: Date.now(), text: "Recovery checked. Saved meetings are available in Note Taker." });
     }
   };
   const ids = useRef(Date.now());
@@ -119,8 +125,8 @@ export function App() {
     if (!editing) navigate("spaces");
     notify(editing ? "Workspace updated." : "Workspace created. Add your first meeting.");
   };
-  const updateMeeting = async (updated: Meeting) => {
-    if (!await run({ kind: "update_meeting", meeting: updated })) return;
+  const updateMeeting = async (updated: Meeting, titleEdited = false) => {
+    if (!await run({ kind: "update_meeting", meeting: updated, title_edited: titleEdited })) return;
     setDialog(null); setChats({}); notify("Meeting updated.");
   };
   const deleteRecord = async () => {
@@ -149,7 +155,6 @@ export function App() {
             : location.page === "notes" ? <NoteTakerPage meetings={meetings} workspaces={workspaces} query={query} filter={filter} onQuery={setQuery} onFilter={setFilter} onRecord={record} onMeeting={openMeeting} />
               : <WorkspacesPage meetings={meetings} workspaces={workspaces} onCreate={() => setDialog({ kind: "create" })} onWorkspace={openWorkspace} />}
       {ready && recordings.some(needsRecovery) && <aside className="recovery-notice" role="status"><p>Interrupted audio is retained and needs recovery.</p><button className="pill" disabled={recorder.active || recorder.busy || busy} onClick={() => void recover()}>Recover interrupted recording</button></aside>}
-      {ready && location.page === "notes" && !meeting && recordings.some(item => item.meeting_id === null) && <section><h2>Retained & interrupted recordings</h2>{recordings.filter(item => item.meeting_id === null).map(item => <RecordingPlayback key={item.id} recording={item} />)}</section>}
     </AppShell>
     {recorder.active && dialog?.kind !== "record" && <div className="recording-banner" role="status"><span>{recorder.status.state} · {Math.floor(recorder.status.elapsed_ms / 1000)}s{recorder.status.warning && <small className="recording-banner-warning">{recorder.status.warning}</small>}</span><button className="pill" onClick={record}>Open recording controls</button></div>}
     {saveError && dialog?.kind !== "record" && <div className="recording-alert" role="alert"><p>{saveError}</p><button className="pill" onClick={retrySaved}>Retry loading saved recording</button></div>}
@@ -159,13 +164,13 @@ export function App() {
     {error && <div className="storage-error" role="alert"><p>{error}</p><button className="pill" disabled={busy} onClick={() => void run({ kind: "load" })}>Reload data</button></div>}
     {dialog && <Modal title={dialogTitles[dialog.kind]} onClose={close}>
       <fieldset className="dialog-fields" disabled={busy}>
-      {dialog.kind === "settings" && <><RecordingPreferences /><TranscriptionPreferences /></>}
+      {dialog.kind === "settings" && <><RecordingPreferences /><TranscriptionPreferences />{recordings.some(item => item.meeting_id === null || needsRecovery(item)) && <details className="audio-settings"><summary>Recording recovery and retained audio</summary><button className="pill" disabled={recorder.active || recorder.busy} onClick={() => void recover()}>Check recording recovery</button>{recordings.filter(item => item.meeting_id === null || needsRecovery(item)).map(item => <RecordingPlayback key={item.id} recording={item}/>)}</details>}</>}
       {dialog.kind === "about" && <AboutDemo onClose={close} />}
       {dialog.kind === "create" && <CreateWorkspaceForm onSave={createWorkspace} onClose={close} />}
       {dialog.kind === "editWorkspace" && <CreateWorkspaceForm initial={dialog.workspace} onSave={createWorkspace} onClose={close} />}
       {dialog.kind === "editMeeting" && <EditMeetingForm meeting={dialog.meeting} onSave={updateMeeting} onClose={close} />}
-      {(dialog.kind === "deleteWorkspace" || dialog.kind === "deleteMeeting") && <><p className="prose">{dialog.kind === "deleteWorkspace" ? "Meetings will become unassigned. Their notes and any recording files will be kept." : "This removes the meeting notes and task completion permanently. Any recording files will be kept."}</p><div className="actions"><button className="pill" onClick={close}>Cancel</button><button className="dark" disabled={busy} onClick={() => void deleteRecord()}>Delete</button></div></>}
-      {dialog.kind === "record" && <RecordingPanel key={recordingOpen} recorder={recorder} saving={saving} saveError={saveError} onRetry={retrySaved} onRecovered={() => { void run({ kind: "load" }).then(data => { if (data) { observedRecording.current = null; setDialog(null); navigate("notes"); notify("Recovery checked. Retained recordings are available in Note Taker."); } }); }} />}
+      {(dialog.kind === "deleteWorkspace" || dialog.kind === "deleteMeeting") && <><p className="prose">{dialog.kind === "deleteWorkspace" ? "Meetings will become unassigned. Their notes and any recording files will be kept." : "This removes the meeting notes and task completion permanently. Any recording files will be kept."}</p><div className="actions"><button className="pill" onClick={close}>Cancel</button><DeleteButton label={dialog.kind === "deleteWorkspace" ? "Confirm delete workspace" : "Confirm delete meeting"} disabled={busy} onClick={() => void deleteRecord()}/></div></>}
+      {dialog.kind === "record" && <RecordingPanel key={recordingOpen} recorder={recorder} saving={saving} saveError={saveError} onRetry={retrySaved} onRecovered={() => { void run({ kind: "load" }).then(data => { if (data) { observedRecording.current = null; setDialog(null); navigate("notes"); notify("Recovery checked. Saved meetings are available in Note Taker."); } }); }} />}
       </fieldset>
     </Modal>}
     <div role="status" aria-live="polite">{toast && <div className="toast" key={toast.id}>{toast.text}</div>}</div>

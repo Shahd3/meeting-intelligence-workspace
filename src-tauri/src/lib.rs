@@ -98,6 +98,30 @@ async fn processing_rebind(
     .map_err(|_| "Unable to apply job settings.")?
 }
 #[tauri::command]
+async fn intelligence_download(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    meeting_id: i64,
+) -> Result<String, String> {
+    if window.label() != "main" {
+        return Err("Minutes export belongs to the main window.".into());
+    }
+    let downloads = app
+        .path()
+        .download_dir()
+        .map_err(|_| "Unable to locate your Downloads directory.")?;
+    let worker = app.state::<Arc<intelligence::Pipeline>>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        intelligence::download_minutes(
+            &mut storage::open(&worker.database)?,
+            meeting_id,
+            &downloads,
+        )
+    })
+    .await
+    .map_err(|_| "Unable to generate Minutes.")?
+}
+#[tauri::command]
 async fn intelligence_export(
     window: tauri::WebviewWindow,
     contents: String,
@@ -354,6 +378,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            intelligence_download,
             intelligence_export,
             intelligence_request,
             ai_settings_save,

@@ -1507,3 +1507,32 @@ body.widget-window { background: var(--cream); overflow: hidden; }
 .meeting-intelligence[dir="rtl"] { text-align: right; }
 .intelligence-coverage { font-size: 12px; margin-top: 24px; }
 .meeting-intelligence textarea { width: 100%; border-radius: 12px; padding: 12px; font: inherit; }
+
+.mom-button { margin-inline-start: auto; flex-shrink: 0; }
+@media (max-width: 760px) { .detail-heading { flex-wrap: wrap; } .mom-button { margin-inline-start: auto; } }
+
+/* Consistent English alignment; explicit Arabic direction remains authoritative. */
+.heading, .section, .detail-heading, .meeting-meta, .field, .card, .project, .meeting-panel { text-align: start; }
+.nav .icon svg { display: block; }
+.delete-icon { display: inline-flex; align-items: center; justify-content: center; margin-inline-start: auto; width: 36px; height: 36px; flex-shrink: 0; border-radius: 12px; background: #f9e5e3; color: #a75b58; border: 1px solid transparent; cursor: pointer; }
+.delete-icon:hover { background: #f4d5d2; color: #934744; }
+.delete-icon:focus-visible { outline: 2px solid #a75b58; outline-offset: 3px; }
+.notes-ready { background: #e7efdc; color: #47643c; font-size: 11px; padding: 4px 9px; white-space: nowrap; flex-shrink: 0; }
+.detail-heading > div { min-width: 0; flex: 1; }
+.detail-heading h1 { overflow-wrap: anywhere; }
+.meeting-status { margin-inline-start: auto; }
+.card .meeting-status { align-self: flex-end; margin-block: 0 8px; }
+.row-body { min-width: 0; flex: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.row-body .row-title { flex: 1; min-width: 120px; }
+.row-body > small { flex-basis: 100%; }
+.meeting-intelligence { text-align: start; line-height: 1.7; overflow-wrap: anywhere; }
+.meeting-intelligence h3 { margin-block: 22px 10px; }
+.intelligence-topic { border: 0; border-bottom: 1px solid #e5e5dc; border-radius: 0; padding: 10px 0; }
+.intelligence-topic summary { font-size: 15px; }
+.attendee-section .participants { gap: 8px; flex-wrap: wrap; }
+.record-setup .field, .dialog-fields label { text-align: start; }
+
+.card-heading { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.card-heading .card-title { flex: 1; min-width: 120px; margin-block: 0; order: 0; overflow-wrap: anywhere; }
+.card-heading .meeting-status { order: 1; margin-block: 0; align-self: center; }
+@media (max-width: 760px) { .row { flex-wrap: wrap; } .row .meeting-status { max-width: 100%; white-space: normal; } }

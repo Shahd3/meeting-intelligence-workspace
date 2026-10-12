@@ -413,6 +413,8 @@ fn mock_server(status: &str, body: String) -> (String, std::thread::JoinHandle<V
                 }
             }
         };
+        // Windows accepted sockets may inherit the listener nonblocking mode.
+        stream.set_nonblocking(false).unwrap();
         stream
             .set_read_timeout(Some(Duration::from_secs(5)))
             .unwrap();
@@ -643,7 +645,7 @@ fn migration_preserves_old_transcript_without_scheduling_generation() {
         assert_eq!(
             db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
                 .unwrap(),
-            8
+            9
         );
         assert_eq!(
             db.query_row("SELECT count(*) FROM transcript_revisions", [], |r| r
@@ -703,5 +705,263 @@ fn persisted_read_model_reflects_completed_actions_and_keeps_source_data_indepen
             .get::<_, String>(0))
             .unwrap(),
         ""
+    );
+}
+
+#[test]
+fn minutes_export_is_persisted_collision_safe_and_preserves_sources() {
+    let mut f = Fixture::new();
+    let cfg = f.provider("https://example.invalid/v1/");
+    let id = f.transcript();
+    enqueue(&f.db, &id, &cfg, "download-fixture").unwrap();
+    let job = claim(&mut f.db).unwrap().unwrap();
+    let coverage = Coverage {
+        segment_count: 1,
+        analyzed_segments: 1,
+        chunk_count: 1,
+        source_warning: None,
+    };
+    assert!(download_minutes(&mut f.db, 1, &f.directory).is_err());
+    finish(&mut f.db, &job, &notes(&id), &coverage).unwrap();
+    let before = view(&f.db, Some(1), None).unwrap();
+    assert!(before.jobs[0].has_result);
+    let name = download_minutes(&mut f.db, 1, &f.directory).unwrap();
+    let original = std::fs::read(f.directory.join(&name)).unwrap();
+    let second = download_minutes(&mut f.db, 1, &f.directory).unwrap();
+    assert_ne!(name, second);
+    assert_eq!(std::fs::read(f.directory.join(&name)).unwrap(), original);
+    assert!(String::from_utf8(original).unwrap().contains("User title"));
+    let arabic = super::download::save(
+        &f.directory,
+        "اجتماع / ../../CON:",
+        "2026-10-12",
+        "ملخص الاجتماع",
+    )
+    .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(f.directory.join(arabic)).unwrap(),
+        "ملخص الاجتماع"
+    );
+    assert_eq!(
+        f.db.query_row("SELECT count(*) FROM transcripts", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        f.db.query_row("SELECT count(*) FROM recordings", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        1
+    );
+    mutate(
+        &mut f.db,
+        Request::Generate {
+            transcript_id: id,
+            revision: cfg.engine.revision().into(),
+            authorized: true,
+            regenerate: true,
+        },
+    )
+    .unwrap();
+    assert!(download_minutes(&mut f.db, 1, &f.directory).is_err());
+}
+
+#[cfg(windows)]
+#[test]
+fn actual_transcription_worker_automatically_hands_off_to_generation_without_ui() {
+    let f = Fixture::new();
+    let (stt_base,stt_server)=mock_server("200 OK",r#"{"text":"We agreed to test the application.","segments":[{"text":"We agreed to test the application.","start":0,"end":1}]}"#.into());
+    let stt_key = uuid::Uuid::new_v4().to_string();
+    let stt_engine = Engine::Remote {
+        remote: Remote {
+            base_url: stt_base,
+            model: "synthetic-stt".into(),
+            response_format: "verbose_json".into(),
+            language: "en".into(),
+        },
+        revision: uuid::Uuid::new_v4().to_string(),
+        credential_id: Some(stt_key.clone()),
+    };
+    WindowsVault
+        .write(&stt_key, "synthetic-handoff-stt")
+        .unwrap();
+    f.db.execute(
+        "INSERT INTO ai_settings(kind,config) VALUES ('transcription',?1)",
+        [serde_json::to_string(&stt_engine).unwrap()],
+    )
+    .unwrap();
+    f.db.execute(
+        "UPDATE transcription_preferences SET automatic_revision=?1 WHERE id=1",
+        [stt_engine.revision()],
+    )
+    .unwrap();
+    f.db.execute("INSERT INTO meetings(id,title,date,duration,summary,highlights,decision,actions,speakers) VALUES (1,'Handoff fixture','','','','[]','','[]','[]')",[]).unwrap();
+    let recording = uuid::Uuid::new_v4().to_string();
+    let root = f.directory.join("recordings");
+    let audio = root.join(&recording);
+    std::fs::create_dir_all(&audio).unwrap();
+    let mut writer = crate::recording::wav::Wav::create(&audio.join("microphone.wav")).unwrap();
+    writer.append_at(0, &[1u8, 0, 1, 0].repeat(48000)).unwrap();
+    writer.finish(48000).unwrap();
+    f.db.execute("INSERT INTO recordings(id,meeting_id,title,state,finalized,complete,elapsed_ms) VALUES (?1,1,'Handoff fixture','saved',1,1,1000)",[&recording]).unwrap();
+    f.db.execute("INSERT INTO recording_tracks(recording_id,role,device_id,device_name,filename,frames) VALUES (?1,'microphone','','','microphone.wav',48000)",[&recording]).unwrap();
+    processing::enqueue_finalized(&f.db, &recording, true).unwrap();
+    let transcript: String =
+        f.db.query_row("SELECT id FROM processing_jobs", [], |r| r.get(0))
+            .unwrap();
+    let body=serde_json::json!({"choices":[{"finish_reason":"stop","message":{"content":serde_json::to_string(&notes(&transcript)).unwrap()}}]}).to_string();
+    let (base, gen_server) = mock_server("200 OK", body);
+    let cfg = f.provider(&base);
+    let Engine::Remote {
+        credential_id: Some(key),
+        ..
+    } = &cfg.engine
+    else {
+        panic!()
+    };
+    WindowsVault.write(key, "synthetic-handoff-chat").unwrap();
+    f.db.execute(
+        "UPDATE intelligence_preferences SET automatic_revision=?1 WHERE id=1",
+        [cfg.engine.revision()],
+    )
+    .unwrap();
+    let stt = processing::Pipeline::new(f.path.clone(), root);
+    let generation = Pipeline::new(f.path.clone());
+    stt.start();
+    generation.start();
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let complete = loop {
+        let n: i64 =
+            f.db.query_row("SELECT count(*) FROM meeting_intelligence", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        if n == 1 {
+            break true;
+        }
+        if Instant::now() > deadline {
+            break false;
+        }
+        std::thread::sleep(Duration::from_millis(30));
+    };
+    stt.shutdown.store(true, Ordering::Release);
+    generation.shutdown.store(true, Ordering::Release);
+    std::thread::sleep(Duration::from_millis(600));
+    WindowsVault.delete(&stt_key).unwrap();
+    WindowsVault.delete(key).unwrap();
+    assert!(complete, "Automatic pipeline did not complete.");
+    stt_server.join().unwrap();
+    gen_server.join().unwrap();
+    register_completed(&f.db, &transcript).unwrap();
+    let db = storage::open(&f.path).unwrap();
+    assert_eq!(
+        db.query_row("SELECT count(*) FROM intelligence_jobs", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        db.query_row("SELECT attempts FROM intelligence_jobs", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        db.query_row("SELECT state FROM processing_jobs", [], |r| r
+            .get::<_, String>(0))
+            .unwrap(),
+        "completed"
+    );
+    assert!(audio.join("microphone.wav").exists());
+}
+
+#[test]
+fn ai_title_is_atomic_persistent_and_respects_manual_edits() {
+    for edit in [None, Some("My title"), Some("Untitled Meeting")] {
+        let mut f = Fixture::new();
+        let cfg = f.provider("https://example.invalid/v1/");
+        let id = f.transcript();
+        f.db.execute(
+            "UPDATE meetings SET title='Untitled Meeting',title_source='system'",
+            [],
+        )
+        .unwrap();
+        enqueue(&f.db, &id, &cfg, "title-test").unwrap();
+        let job = claim(&mut f.db).unwrap().unwrap();
+        let mut snapshot = storage::apply(&mut f.db, storage::Request::Load).unwrap();
+        let stale = snapshot.meetings[0].clone();
+        if let Some(title) = edit {
+            snapshot.meetings[0].title = title.into();
+            storage::apply(
+                &mut f.db,
+                storage::Request::UpdateMeeting {
+                    meeting: snapshot.meetings.remove(0),
+                    title_edited: Some(true),
+                },
+            )
+            .unwrap();
+        }
+        finish(
+            &mut f.db,
+            &job,
+            &notes(&id),
+            &Coverage {
+                segment_count: 1,
+                analyzed_segments: 1,
+                chunk_count: 1,
+                source_warning: None,
+            },
+        )
+        .unwrap();
+        // A stale assignment/summary edit must not undo the selected title.
+        storage::apply(
+            &mut f.db,
+            storage::Request::UpdateMeeting {
+                meeting: stale,
+                title_edited: Some(false),
+            },
+        )
+        .unwrap();
+        let reopened = storage::open(&f.path).unwrap();
+        let actual: (String, String) = reopened
+            .query_row("SELECT title,title_source FROM meetings", [], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(
+            actual,
+            (
+                edit.unwrap_or("Test the application").into(),
+                if edit.is_some() { "manual" } else { "ai" }.into()
+            )
+        );
+    }
+}
+#[test]
+fn legacy_placeholder_title_is_conservatively_manual() {
+    let mut f = Fixture::new();
+    let cfg = f.provider("https://example.invalid/v1/");
+    let id = f.transcript();
+    f.db.execute("UPDATE meetings SET title='Untitled Meeting'", [])
+        .unwrap();
+    enqueue(&f.db, &id, &cfg, "legacy-title").unwrap();
+    let job = claim(&mut f.db).unwrap().unwrap();
+    finish(
+        &mut f.db,
+        &job,
+        &notes(&id),
+        &Coverage {
+            segment_count: 1,
+            analyzed_segments: 1,
+            chunk_count: 1,
+            source_warning: None,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        f.db.query_row("SELECT title FROM meetings", [], |r| r.get::<_, String>(0))
+            .unwrap(),
+        "Untitled Meeting"
     );
 }

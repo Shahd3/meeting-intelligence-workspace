@@ -40,13 +40,30 @@ pub struct Meeting {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Request {
     Load,
-    CreateWorkspace { workspace: Workspace },
-    UpdateWorkspace { workspace: Workspace },
-    DeleteWorkspace { id: i64 },
-    CreateMeeting { meeting: Meeting },
-    UpdateMeeting { meeting: Meeting },
-    DeleteMeeting { id: i64 },
-    Complete { key: String, value: bool },
+    CreateWorkspace {
+        workspace: Workspace,
+    },
+    UpdateWorkspace {
+        workspace: Workspace,
+    },
+    DeleteWorkspace {
+        id: i64,
+    },
+    CreateMeeting {
+        meeting: Meeting,
+    },
+    UpdateMeeting {
+        meeting: Meeting,
+        #[serde(default)]
+        title_edited: Option<bool>,
+    },
+    DeleteMeeting {
+        id: i64,
+    },
+    Complete {
+        key: String,
+        value: bool,
+    },
 }
 
 #[derive(Debug, Serialize)]
@@ -72,7 +89,7 @@ pub fn open(path: &Path) -> Result<Connection> {
     let version: i64 = tx
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .map_err(db_error)?;
-    if version > 8 {
+    if version > 9 {
         return Err("This database requires a newer application version.".into());
     }
     if version == 0 {
@@ -105,6 +122,10 @@ pub fn open(path: &Path) -> Result<Connection> {
     }
     if version < 8 {
         tx.execute_batch(include_str!("../migrations/0008.sql"))
+            .map_err(db_error)?;
+    }
+    if version < 9 {
+        tx.execute_batch(include_str!("../migrations/0009.sql"))
             .map_err(db_error)?;
     }
     crate::intelligence::backfill(&tx)?;
@@ -205,7 +226,10 @@ pub fn apply(db: &mut Connection, request: Request) -> Result<Snapshot> {
             meeting_valid(&m)?;
             tx.execute("INSERT INTO meetings(title,workspace_id,date,duration,summary,highlights,decision,actions,speakers) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",params![m.title.trim(),if m.project==0 {None}else{Some(m.project)},m.date,m.duration,m.summary,json(&m.highlights)?,m.decision,json(&m.actions)?,json(&m.speakers)?]).map_err(db_error)?;
         }
-        Request::UpdateMeeting { meeting: m } => {
+        Request::UpdateMeeting {
+            meeting: m,
+            title_edited,
+        } => {
             id_valid(m.id)?;
             meeting_valid(&m)?;
             // Index-based completion identities must not survive a changed action list.
@@ -221,7 +245,18 @@ pub fn apply(db: &mut Connection, request: Request) -> Result<Snapshot> {
                 tx.execute("DELETE FROM meeting_completion WHERE meeting_id=?1", [m.id])
                     .map_err(db_error)?;
             }
-            changed(tx.execute("UPDATE meetings SET title=?1,workspace_id=?2,date=?3,duration=?4,summary=?5,highlights=?6,decision=?7,actions=?8,speakers=?9 WHERE id=?10",params![m.title.trim(),if m.project==0 {None}else{Some(m.project)},m.date,m.duration,m.summary,json(&m.highlights)?,m.decision,actions,json(&m.speakers)?,m.id]).map_err(db_error)?)?;
+            let current: String = tx
+                .query_row("SELECT title FROM meetings WHERE id=?1", [m.id], |r| {
+                    r.get(0)
+                })
+                .map_err(db_error)?;
+            let edited = title_edited.unwrap_or(m.title.trim() != current);
+            let title = if edited {
+                m.title.trim()
+            } else {
+                current.as_str()
+            };
+            changed(tx.execute("UPDATE meetings SET title=?1,title_source=CASE WHEN ?11 THEN 'manual' ELSE title_source END,workspace_id=?2,date=?3,duration=?4,summary=?5,highlights=?6,decision=?7,actions=?8,speakers=?9 WHERE id=?10",params![title,if m.project==0 {None}else{Some(m.project)},m.date,m.duration,m.summary,json(&m.highlights)?,m.decision,actions,json(&m.speakers)?,m.id,edited]).map_err(db_error)?)?;
         }
         Request::DeleteMeeting { id } => {
             id_valid(id)?;
