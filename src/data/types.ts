@@ -9,5 +9,5 @@ export type Meeting = {
 };
 export type Completion = Record<string, boolean>;
 export type Page = "home" | "notes" | "spaces";
-export type MeetingTab = "Summary" | "Highlights" | "Decisions" | "Action items" | "Transcript" | "Minutes";
+export type MeetingTab = "Summary" | "Action items" | "Transcript";
 export type ChatMessage = { id: number; user: boolean; text: string; meetingIds: number[] };

@@ -43,6 +43,7 @@ fn db() -> Connection {
         include_str!("../../migrations/0006.sql"),
         include_str!("../../migrations/0007.sql"),
         include_str!("../../migrations/0008.sql"),
+        include_str!("../../migrations/0009.sql"),
     ] {
         db.execute_batch(migration).unwrap();
     }

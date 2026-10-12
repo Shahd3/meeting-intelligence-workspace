@@ -5,8 +5,9 @@ import { formatTime } from "../data/simulation";
 export { AIProcessingPreferences as TranscriptionPreferences } from "./AIProcessingPreferences";
 export function TranscriptionStatus({ job }: { job: ProcessingJob }) {
   const data = useProcessing();
+  if (job.state === "completed" && !job.warning && !job.error) return null;
   return <div className="transcription-status" role="status">
-    <span className="tag sage">{processingLabel(job)}</span>
+    {processingLabel(job) && <span className="tag sage">{processingLabel(job)}</span>}
     {job.state === "processing" && <small> {job.stage.replaceAll("_", " ")} · {job.checkpoints} audio chunks checkpointed</small>}
     {job.state === "queued" && job.ready && <small> Waiting for the local backend worker.</small>}
     {job.error && <p>{job.error}</p>}

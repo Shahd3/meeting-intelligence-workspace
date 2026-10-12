@@ -6,7 +6,7 @@ export type Snapshot = { meetings: Meeting[]; workspaces: Workspace[]; completed
 export type DataRequest =
   | { kind: "load" }
   | { kind: "create_workspace" | "update_workspace"; workspace: Workspace }
-  | { kind: "create_meeting" | "update_meeting"; meeting: Meeting }
+  | { kind: "create_meeting" | "update_meeting"; meeting: Meeting; title_edited?: boolean }
   | { kind: "delete_workspace" | "delete_meeting"; id: number }
   | { kind: "complete"; key: string; value: boolean };
 

@@ -1,7 +1,6 @@
 import { useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { useProcessing } from "../data/processing";
-import { direction, intelligenceLabel, minutes, type Evidence, type Point } from "../data/intelligence";
+import { direction, intelligenceLabel, meaningfulText, meaningfulPoints, type Evidence, type Point } from "../data/intelligence";
 import type { Meeting, MeetingTab } from "../data/types";
 export function IntelligenceControls({ meetingId }: { meetingId: number }) {
  const data = useProcessing(); const view = data.view?.intelligence; const provider = data.view?.ai.summarization;
@@ -10,8 +9,9 @@ export function IntelligenceControls({ meetingId }: { meetingId: number }) {
  const choices = view.transcripts; const transcript = choices.find(t => t.id === selected) || choices.find(t => t.id === view.result?.transcript_id) || choices[0];
  const jobs = view.jobs.filter(j => j.meeting_id === meetingId); const active = jobs.some(j => ["queued", "processing", "retryable"].includes(j.state));
  const latest = jobs[jobs.length - 1];
+
  return <div className="intelligence-controls">
-  {latest && <div className="transcription-status" role="status"><span className="tag lav">{intelligenceLabel(latest.state)}</span>{latest.state === "processing" && <small> {latest.stage.replaceAll("_", " ")}</small>}{latest.state === "retryable" && latest.next_attempt_at && <small> Next attempt: {new Date(latest.next_attempt_at * 1000).toLocaleTimeString()}</small>}{latest.error && <p>{latest.error}</p>}{latest.state === "failed" && <button className="pill" disabled={data.busy || latest.attempts >= 5 || latest.requests >= 64} onClick={() => void data.command("intelligence_request", { request: { kind: "retry", id: latest.id } })}>Retry AI analysis</button>}</div>}
+  {latest && latest.state !== "completed" && <div className="transcription-status" role="status"><span className="tag lav">{intelligenceLabel(latest.state)}</span>{latest.state === "processing" && <small> {latest.stage.replaceAll("_", " ")}</small>}{latest.state === "retryable" && latest.next_attempt_at && <small> Next attempt: {new Date(latest.next_attempt_at * 1000).toLocaleTimeString()}</small>}{latest.error && <p>{latest.error}</p>}{latest.state === "failed" && <button className="pill" disabled={data.busy || latest.attempts >= 5 || latest.requests >= 64} onClick={() => void data.command("intelligence_request", { request: { kind: "retry", id: latest.id } })}>Retry AI analysis</button>}</div>}
   {view.worker_error && <p role="alert">{view.worker_error}</p>}
   {!active && choices.length > 0 && <>
    {!provider ? <p className="muted">Configure and authorize a summarization provider in Recording Preferences → AI Processing. Your transcript is already saved.</p> : <>
@@ -27,36 +27,32 @@ export function IntelligenceControls({ meetingId }: { meetingId: number }) {
 export function EvidenceLinks({ evidence, onEvidence }: { evidence: Evidence[]; onEvidence: (id: string) => void }) {
  return <span className="evidence-links">{evidence.filter((e,i,all) => all.findIndex(other => other.segment_id === e.segment_id) === i).map((e,i) => <button className="text" title={e.quote} key={e.segment_id} onClick={() => onEvidence(e.segment_id)}>Source {i + 1}</button>)}</span>;
 }
-function Fact({ point, onEvidence }: { point: Point; onEvidence: (id: string) => void }) { return <div className="intelligence-fact"><p className="prose">{point.text}</p><EvidenceLinks evidence={point.evidence} onEvidence={onEvidence} /></div>; }
+function Fact({ point }: { point: Point }) { return <div className="intelligence-fact"><p className="prose">{point.text}</p></div>; }
 export function IntelligenceContent({ meeting, tab, onEvidence }: { meeting: Meeting; tab: MeetingTab; onEvidence: (id: string) => void }) {
  const data = useProcessing(); const view = data.view?.intelligence; const result = view?.result;
- const [editing, setEditing] = useState(false); const [names, setNames] = useState(""); const [message, setMessage] = useState<string | null>(null);
+ const [editing, setEditing] = useState(false); const [names, setNames] = useState("");
  if (!view || data.view?.transcript_meeting_id !== meeting.id) return <p role="status">Loading saved meeting notes…</p>;
  if (!result) return <p className="muted">{view.jobs.some(j=>j.meeting_id===meeting.id && ["queued","processing","retryable"].includes(j.state)) ? "Meeting notes will appear here when analysis finishes. You can leave this screen." : "No meeting intelligence is available yet. The original transcript and audio remain available."}</p>;
- const n = result.notes; const attendees = view.attendees_override ?? n.attendees.map(a => a.role ? `${a.name} (${a.role})` : a.name);
- const doc = minutes(meeting, result, view.attendees_override); const dir = direction(n.executive_summary.text + n.topics.map(t=>t.heading).join(" "));
- const list = (points: Point[], empty: string) => points.length ? points.map((p,i)=><Fact point={p} onEvidence={onEvidence} key={i}/>) : <p className="muted">{empty}</p>;
+ const n = result.notes;
+ const attendees = (view.attendees_override ?? n.attendees.filter(a=>meaningfulText(a.name)).map(a => a.role ? `${a.name} (${a.role})` : a.name)).filter(meaningfulText);
+ const topics = n.topics.map(t=>({...t,points:meaningfulPoints(t.points)})).filter(t=>t.points.length);
+ const decisions=meaningfulPoints(n.decisions), questions=meaningfulPoints(n.open_questions), followups=meaningfulPoints(n.follow_ups);
+ const actions=n.action_items.map((action,ordinal)=>({action,ordinal})).filter(({action})=>meaningfulText(action.description.text));
+ const dir = direction(n.executive_summary.text + n.topics.map(t=>t.heading).join(" "));
+ const list = (points: Point[], empty: string) => points.length ? points.map((p,i)=><Fact point={p} key={i}/>) : <p className="muted">{empty}</p>;
  return <div className="meeting-intelligence" dir={dir}>
   {view.jobs.some(j=>j.meeting_id===meeting.id && ["queued","processing","retryable"].includes(j.state)) && <p role="status">Showing the previous successful result while new notes are prepared.</p>}
   {result.coverage.source_warning && <p className="recording-warning">{result.coverage.source_warning}</p>}
   {tab === "Summary" && <>
-   {n.suggested_title.text && <div className="callout"><span className="eyebrow">Suggested title</span><Fact point={n.suggested_title} onEvidence={onEvidence}/><small>Your meeting title remains unchanged.</small></div>}
-   <Fact point={n.executive_summary} onEvidence={onEvidence}/>
-   {!n.executive_summary.text && <p className="muted">No substantive summary was identified.</p>}
-   <h3>Attendees</h3><div className="participants">{attendees.length ? attendees.map(name=><span className="pill" key={name}>{name}</span>) : <p className="muted">Attendance was not established.</p>}</div>
-   {view.attendees_override === null && n.attendees.map((a,i)=><EvidenceLinks key={i} evidence={a.evidence} onEvidence={onEvidence}/>)}
+   {meaningfulText(n.executive_summary.text) && <Fact point={n.executive_summary}/>}
+   {!meaningfulText(n.executive_summary.text) && !attendees.length && !topics.length && !decisions.length && !questions.length && !followups.length && <p className="muted">No substantive summary was identified.</p>}
+   {attendees.length > 0 && <section className="attendee-section"><h3>Attendees</h3><div className="participants">{attendees.map(name=><span className="pill" key={name}>{name}</span>)}</div></section>}
    <button className="text" onClick={() => { setEditing(!editing); setNames(attendees.join("\n")); }}>Correct attendees</button>
    {editing && <form onSubmit={event=>{event.preventDefault();void data.command("intelligence_request",{request:{kind:"attendees",meeting_id:meeting.id,names:names.split("\n").map(s=>s.trim()).filter(Boolean)}}).then(ok=>{if(ok)setEditing(false)});}}><label className="field">Confirmed attendees (one per line)<textarea value={names} onChange={event=>setNames(event.target.value)} rows={4}/></label><button className="pill" disabled={data.busy}>Save confirmed attendees</button><button type="button" className="text" onClick={()=>setEditing(false)}>Cancel</button></form>}
    {view.attendees_override !== null && <><small>User-confirmed attendee list.</small><button className="text" disabled={data.busy} onClick={()=>void data.command("intelligence_request",{request:{kind:"attendees",meeting_id:meeting.id,names:null}})}>Use evidence-backed attendees</button></>}
-   <h3>Discussion overview</h3>{n.topics.map((t,i)=><details className="intelligence-topic" key={i} open><summary>{t.heading}</summary>{list(t.points,"No discussion points documented.")}</details>)}
+   {topics.length > 0 && <h3>Discussion overview</h3>}{topics.map((t,i)=><details className="intelligence-topic" key={i} open><summary>{meaningfulText(t.heading) ? t.heading : "Discussion points"}</summary>{list(t.points,"No discussion points documented.")}</details>)}
   </>}
-  {tab === "Highlights" && (n.topics.length ? n.topics.map((t,i)=><section key={i}><h3>{t.heading}</h3>{list(t.points,"No discussion points documented.")}</section>) : <p className="muted">No substantive topics were identified.</p>)}
-  {tab === "Decisions" && <><h3>Confirmed decisions</h3>{list(n.decisions,"No explicit decisions were documented.")}<h3>Open questions and unresolved proposals</h3>{list(n.open_questions,"No unresolved questions were documented.")}<h3>Follow-ups</h3>{list(n.follow_ups,"No explicit follow-ups were documented.")}</>}
-  {tab === "Action items" && (n.action_items.length ? n.action_items.map((a,i)=>{const state=result.actions.find(s=>s.ordinal===i);return <div className="task intelligence-action" key={state?.id || i}><input type="checkbox" id={`intelligence-action-${state?.id}`} checked={state?.done || false} disabled={data.busy || !state} onChange={event=>void data.command("intelligence_request",{request:{kind:"complete_action",id:state?.id,done:event.target.checked}})}/><div><label htmlFor={`intelligence-action-${state?.id}`}>{a.description.text}</label><small>{a.owner ?? "Owner not assigned"} · {a.deadline ?? "Deadline not stated"}</small><EvidenceLinks evidence={[...a.description.evidence,...a.owner_evidence,...a.deadline_evidence]} onEvidence={onEvidence}/></div><span className="tag">{state?.done ? "Done" : "To do"}</span></div>}) : <p className="muted">No explicit action items were documented.</p>)}
-  {tab === "Minutes" && <>
-   <div className="actions"><button className="pill" onClick={()=>void navigator.clipboard.writeText(doc).then(()=>setMessage("Minutes copied.")).catch(()=>setMessage("Clipboard unavailable. Select and copy the text below."))}>Copy Minutes</button><button className="pill" onClick={()=>void invoke<boolean>("intelligence_export",{contents:doc}).then(saved=>setMessage(saved ? "Minutes exported." : "Export cancelled.")).catch(()=>setMessage("Unable to export Minutes. No file was saved."))}>Export Markdown</button></div>
-   {message && <p role="status">{message}</p>}<article className="minutes-document"><h3>Minutes of Meeting</h3><p className="muted">AI-generated draft · {meeting.date} · {meeting.duration}</p><h3>{meeting.title}</h3><h4>Attendees</h4><p>{attendees.join(", ") || "Attendance not established."}</p><h4>Executive summary</h4><p>{n.executive_summary.text || "No substantive summary available."}</p><h4>Discussion</h4>{n.topics.map((t,i)=><section key={i}><h4>{t.heading}</h4>{list(t.points,"No discussion points documented.")}</section>)}<h4>Decisions</h4>{list(n.decisions,"None documented.")}<h4>Action items</h4>{n.action_items.length ? <div className="minutes-table"><table><thead><tr><th>Action</th><th>Owner</th><th>Deadline</th></tr></thead><tbody>{n.action_items.map((a,i)=><tr key={i}><td>{a.description.text}</td><td>{a.owner ?? "Not assigned"}</td><td>{a.deadline ?? "Not stated"}</td></tr>)}</tbody></table></div> : <p>No actions documented.</p>}<h4>Follow-ups</h4>{list(n.follow_ups,"None documented.")}<h4>Open questions</h4>{list(n.open_questions,"None documented.")}</article>
-  </>}
-  <p className="muted intelligence-coverage">{result.coverage.analyzed_segments}/{result.coverage.segment_count} source segments processed. Evidence links support review; processing coverage does not guarantee factual completeness.</p>
+  {tab === "Summary" && <>{decisions.length > 0 && <section><h3>Confirmed decisions</h3>{list(decisions,"")}</section>}{questions.length > 0 && <section><h3>Open questions and unresolved proposals</h3>{list(questions,"")}</section>}{followups.length > 0 && <section><h3>Follow-ups</h3>{list(followups,"")}</section>}</>}
+  {tab === "Action items" && (actions.length ? actions.map(({action:a,ordinal:i})=>{const state=result.actions.find(s=>s.ordinal===i);return <div className="task intelligence-action" key={state?.id || i}><input type="checkbox" id={`intelligence-action-${state?.id}`} checked={state?.done || false} disabled={data.busy || !state} onChange={event=>void data.command("intelligence_request",{request:{kind:"complete_action",id:state?.id,done:event.target.checked}})}/><div><label htmlFor={`intelligence-action-${state?.id}`}>{a.description.text}</label><small>{meaningfulText(a.owner) ? a.owner : "Unassigned"}{meaningfulText(a.deadline) ? ` · ${a.deadline}` : ""}</small><EvidenceLinks evidence={[...a.description.evidence,...a.owner_evidence,...a.deadline_evidence]} onEvidence={onEvidence}/></div><span className="tag">{state?.done ? "Done" : "To do"}</span></div>}) : <p className="muted">No explicit action items were documented.</p>)}
  </div>;
 }

@@ -1,3 +1,4 @@
+import { NavigationIcon } from "./Icons";
 import type { ReactNode } from "react";
 import type { Page } from "../data/types";
 
@@ -17,7 +18,7 @@ export function AppShell({ page, dashboard, onNavigate, onAbout, onSettings, chi
       <nav aria-label="Main navigation">
         {navigation.map(item => <button key={item.page} className={`nav ${page === item.page ? "active" : ""}`}
           aria-label={item.label} aria-current={page === item.page ? "page" : undefined} onClick={() => onNavigate(item.page)}>
-          <span className="icon" aria-hidden="true">{item.symbol}</span><span className="label">{item.label}</span>
+          <span className="icon" aria-hidden="true"><NavigationIcon kind={item.page}/></span><span className="label">{item.label}</span>
         </button>)}
       </nav>
       <div className="side-note"><div className="flower" aria-hidden="true">✳</div>A little more clarity.<br />A lot more possibility.<p className="side-tagline">YOUR IDEAS, CONNECTED.</p></div>

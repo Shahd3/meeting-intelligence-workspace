@@ -18,7 +18,7 @@ export function processingLabel(job?: ProcessingJob) {
   if (!job) return "Audio saved";
   if (job.state === "queued" && !job.ready) return "Ready to transcribe";
   if (job.error_category === "consent") return "Upload approval required";
-  return ({ queued: "Transcription queued", processing: "Transcribing audio", completed: "Transcript ready", failed: "Transcription needs attention", retryable: "Transcription retry scheduled" })[job.state];
+  return ({ queued: "Transcription queued", processing: "Transcribing audio", completed: "", failed: "Transcription needs attention", retryable: "Transcription retry scheduled" })[job.state];
 }
 export function ProcessingProvider({ children }: { children: ReactNode }) {
   const [view, setView] = useState<View | null>(null);
