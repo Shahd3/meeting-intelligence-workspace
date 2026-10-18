@@ -1,153 +1,46 @@
 import { DeleteButton } from "../components/Icons";
-import { useProcessing } from "../data/processing";
 import { RecordingPlayback } from "../components/RecordingPlayback";
 import { TranscriptionPreferences } from "../components/Transcription";
-import { useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { useDesktopWidget } from "../data/desktopWidget";
 import { RecordingPreferences } from "../components/RecordingPreferences";
 import { AppShell } from "../components/AppShell";
 import { AboutDemo, CreateWorkspaceForm } from "../components/DemoDialogs";
-import { needsRecovery, savedMeetingAvailable } from "../data/recordingFlow";
-import { useRecording } from "../data/recording";
+import { needsRecovery } from "../data/recordingFlow";
 import { RecordingPanel } from "../components/RecordingPanel";
 import { Modal } from "../components/Modal";
 import { useLocalData } from "../data/useLocalData";
 import { EditMeetingForm } from "../components/EditMeetingForm";
-import { simulateAnswer } from "../data/simulation";
-import type { ChatMessage, Color, Meeting, Workspace, MeetingTab, Page } from "../data/types";
 import { HomePage } from "../pages/HomePage";
 import { MeetingDetail } from "../pages/MeetingDetail";
 import { NoteTakerPage } from "../pages/NoteTakerPage";
 import { WorkspaceDetail } from "../pages/WorkspaceDetail";
 import { WorkspacesPage } from "../pages/WorkspacesPage";
 
-type Location = { page: Page; meetingId?: number; workspaceId?: number };
-type Dialog = { kind: "about" | "settings" | "create" | "record" } | { kind: "editWorkspace"; workspace: Workspace } | { kind: "editMeeting"; meeting: Meeting } | { kind: "deleteWorkspace" | "deleteMeeting"; id: number };
-const dialogTitles = { settings: "Recording preferences", about: "A thoughtful space to gather.", create: "A new place for your ideas.", record: "Make room for the conversation.", editWorkspace: "Edit workspace", editMeeting: "Edit meeting", deleteWorkspace: "Delete workspace?", deleteMeeting: "Delete meeting?" };
+import { useAppNavigation } from "../hooks/useAppNavigation";
+import { useDialogs, dialogTitles } from "../hooks/useDialogs";
+import { useRecordingFlow } from "../hooks/useRecordingFlow";
+import { useToast } from "../hooks/useToast";
 
 export function App() {
-  const { meetings, workspaces, completed, recordings, ready, busy, error, run } = useLocalData();
-  const processing = useProcessing();
-  const titleReceipts = processing.view?.intelligence.jobs.filter(j => j.state === "completed" && j.has_result).map(j => j.id).join("|") || "";
-  const refreshedTitles = useRef("");
-  useEffect(() => { if (ready && !busy && titleReceipts && refreshedTitles.current !== titleReceipts) { refreshedTitles.current = titleReceipts; void run({ kind: "load" }); } }, [ready, busy, titleReceipts, run]);
-  const recorder = useRecording();
-  const desktop = useDesktopWidget();
-  const [location, setLocation] = useState<Location>({ page: "home" });
-  const [tab, setTab] = useState<MeetingTab>("Summary");
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState("all");
-  const [chats, setChats] = useState<Record<number, ChatMessage[]>>({});
-  const [dialog, setDialog] = useState<Dialog | null>(null);
-  const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
-  const [recordingOpen, setRecordingOpen] = useState(0);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const observedRecording = useRef<string | null>(null);
-  const refreshedRecording = useRef<string | null>(null);
-  const refreshPending = useRef(false);
-  const [retrySave, setRetrySave] = useState(0);
-  useEffect(() => {
-    if (recorder.active && recorder.status.id) observedRecording.current = recorder.status.id;
-    const id = recorder.status.id;
-    if (!id || recorder.active || !["saved", "failed"].includes(recorder.status.state) || refreshedRecording.current === id || busy || refreshPending.current) return;
-    refreshedRecording.current = id;
-    refreshPending.current = true;
-    const returnToLibrary = recorder.status.state === "saved" && observedRecording.current === id;
-    if (returnToLibrary) { setSaving(true); setSaveError(null); }
-    void run({ kind: "load" }).then(data => {
-      if (returnToLibrary) {
-        if (savedMeetingAvailable(recorder.status, data?.meetings)) {
-          setDialog(null); setLocation({ page: "notes" }); setQuery(""); setFilter("all");
-          setToast({ id: Date.now(), text: "Recording saved. Your meeting is ready in Note Taker." });
-          observedRecording.current = null; setSaving(false);
-        } else {
-          setSaveError("Audio was saved, but the meeting list could not be refreshed. Retry to reopen your library.");
-        }
-      }
-    }).finally(() => { refreshPending.current = false; });
-  }, [recorder.status.id, recorder.status.state, recorder.status.meeting_id, recorder.active, busy, run, retrySave]);
-  const retrySaved = () => { refreshedRecording.current = null; setRetrySave(value => value + 1); };
-  const recover = async () => {
-    if (!await recorder.recover()) return;
-    if (await run({ kind: "load" })) {
-      observedRecording.current = null; setDialog(null); setLocation({ page: "notes" }); setQuery(""); setFilter("all");
-      setToast({ id: Date.now(), text: "Recovery checked. Saved meetings are available in Note Taker." });
-    }
-  };
-  const ids = useRef(Date.now());
-  const previousView = useRef("");
-  const nextId = () => ++ids.current;
-  const meeting = meetings.find(item => item.id === location.meetingId);
-  const workspace = workspaces.find(item => item.id === location.workspaceId);
-  const dashboard = ready && location.page === "home" && !meeting && !workspace;
-  const viewKey = `${location.page}:${location.meetingId || ""}:${location.workspaceId || ""}`;
-
-  useEffect(() => {
-    if (!toast) return;
-    const timer = window.setTimeout(() => setToast(null), 3000);
-    return () => window.clearTimeout(timer);
-  }, [toast]);
-  useEffect(() => {
-    document.body.classList.toggle("dashboard", dashboard);
-    return () => document.body.classList.remove("dashboard");
-  }, [dashboard]);
-  useEffect(() => {
-    if (previousView.current && previousView.current !== viewKey) {
-      window.scrollTo(0, 0);
-      const heading = document.querySelector<HTMLElement>("#view h1");
-      heading?.setAttribute("tabindex", "-1"); heading?.focus({ preventScroll: true });
-    }
-    previousView.current = viewKey;
-  }, [viewKey]);
-
-  const notify = (text: string) => setToast({ id: nextId(), text });
-  const navigate = (page: Page) => { setLocation({ page }); setQuery(""); setFilter("all"); };
-  const openMeeting = (id: number) => { setLocation(current => ({ ...current, meetingId: id })); setTab("Summary"); };
-  const openWorkspace = (id: number) => setLocation({ page: "spaces", workspaceId: id });
-  const complete = (key: string, value: boolean) => { void run({ kind: "complete", key, value }); };
-  const record = () => { setRecordingOpen(value => value + 1); setDialog({ kind: "record" }); };
-  useEffect(() => {
-    if (!desktop.view?.setup_requested) return;
-    void invoke<boolean>("desktop_widget_take_setup").then(requested => {
-      if (requested) { setRecordingOpen(value => value + 1); setDialog({ kind: "record" }); }
-    }).catch(cause => setToast({ id: Date.now(), text: String(cause) }));
-  }, [desktop.view?.setup_requested]);
-  const close = () => { if (!busy) setDialog(null); };
-  const createWorkspace = async (name: string, description: string, color: Color) => {
-    const editing = dialog?.kind === "editWorkspace" ? dialog.workspace : null;
-    const data = await run({ kind: editing ? "update_workspace" : "create_workspace", workspace: {
-      ...(editing || { id: 0, symbol: "✳", overview: "A new space to collect conversations and build shared understanding.", task: "", owner: "", due: "" }), name, description, color,
-    } });
-    if (!data) return;
-    setDialog(null); setChats({});
-    if (!editing) navigate("spaces");
-    notify(editing ? "Workspace updated." : "Workspace created. Add your first meeting.");
-  };
-  const updateMeeting = async (updated: Meeting, titleEdited = false) => {
-    if (!await run({ kind: "update_meeting", meeting: updated, title_edited: titleEdited })) return;
-    setDialog(null); setChats({}); notify("Meeting updated.");
-  };
-  const deleteRecord = async () => {
-    if (dialog?.kind !== "deleteWorkspace" && dialog?.kind !== "deleteMeeting") return;
-    const kind = dialog.kind === "deleteWorkspace" ? "delete_workspace" : "delete_meeting";
-    if (!await run({ kind, id: dialog.id })) return;
-    setDialog(null); setChats({}); navigate(kind === "delete_workspace" ? "spaces" : "notes");
-    notify(kind === "delete_workspace" ? "Workspace deleted. Meetings are now unassigned." : "Meeting deleted.");
-  };
-  const ask = (question: string) => {
-    if (!workspace) return;
-    const scoped = meetings.filter(item => item.project === workspace.id);
-    const user: ChatMessage = { id: nextId(), user: true, text: question, meetingIds: [] };
-    const answer: ChatMessage = { id: nextId(), user: false, text: simulateAnswer(question, workspace, scoped, completed), meetingIds: scoped.some(item => item.recorded) ? [] : scoped.slice(0, 2).map(item => item.id) };
-    setChats(current => ({ ...current, [workspace.id]: [...(current[workspace.id] || []), user, answer] }));
-  };
+  const data = useLocalData();
+  const { meetings, workspaces, completed, recordings, ready, busy, error, run, complete } = data;
+  const { toast, notify } = useToast();
+  const {
+    location, tab, setTab, query, setQuery, filter, setFilter, meeting, workspace,
+    dashboard, navigate, openMeeting, openWorkspace, backFromMeeting,
+  } = useAppNavigation(data);
+  const {
+    dialog, setDialog, close, dismiss, openRecording, chats,
+    createWorkspace, updateMeeting, deleteRecord, ask,
+  } = useDialogs({ ...data, workspace, navigate, notify });
+  const {
+    recorder, desktop, recordingOpen, saving, saveError, retrySaved,
+    record, recover, onRecovered, observedRecording,
+  } = useRecordingFlow({ ready, busy, run, dismiss, openRecording, navigate, notify });
 
   return <>
     <AppShell page={location.page} dashboard={dashboard} onNavigate={navigate} onAbout={() => setDialog({ kind: "about" })} onSettings={() => setDialog({ kind: "settings" })}>
       {!ready ? <section className="panel empty" role="status"><h1>{busy ? "Opening your local workspace…" : "Your local workspace is unavailable."}</h1>{!busy && <button className="dark" onClick={() => void run({ kind: "load" })}>Try again</button>}</section>
-        : meeting ? <MeetingDetail recordings={recordings.filter(item => item.meeting_id === meeting.id)} meeting={meeting} workspaces={workspaces} tab={tab} completed={completed} onTab={setTab} onBack={() => setLocation(current => ({ ...current, meetingId: undefined }))} onAssign={project => {
+        : meeting ? <MeetingDetail recordings={recordings.filter(item => item.meeting_id === meeting.id)} meeting={meeting} workspaces={workspaces} tab={tab} completed={completed} onTab={setTab} onBack={backFromMeeting} onAssign={project => {
         void updateMeeting({ ...meeting, project });
       }} onEdit={() => setDialog({ kind: "editMeeting", meeting })} onDelete={() => setDialog({ kind: "deleteMeeting", id: meeting.id })} onWorkspace={openWorkspace} onComplete={complete} />
         : workspace ? <WorkspaceDetail workspace={workspace} meetings={meetings.filter(item => item.project === workspace.id)} completed={completed} messages={chats[workspace.id] || []} onEdit={() => setDialog({ kind: "editWorkspace", workspace })} onDelete={() => setDialog({ kind: "deleteWorkspace", id: workspace.id })} onBack={() => navigate("spaces")} onMeeting={openMeeting} onComplete={complete} onAsk={ask} />
@@ -170,7 +63,7 @@ export function App() {
       {dialog.kind === "editWorkspace" && <CreateWorkspaceForm initial={dialog.workspace} onSave={createWorkspace} onClose={close} />}
       {dialog.kind === "editMeeting" && <EditMeetingForm meeting={dialog.meeting} onSave={updateMeeting} onClose={close} />}
       {(dialog.kind === "deleteWorkspace" || dialog.kind === "deleteMeeting") && <><p className="prose">{dialog.kind === "deleteWorkspace" ? "Meetings will become unassigned. Their notes and any recording files will be kept." : "This removes the meeting notes and task completion permanently. Any recording files will be kept."}</p><div className="actions"><button className="pill" onClick={close}>Cancel</button><DeleteButton label={dialog.kind === "deleteWorkspace" ? "Confirm delete workspace" : "Confirm delete meeting"} disabled={busy} onClick={() => void deleteRecord()}/></div></>}
-      {dialog.kind === "record" && <RecordingPanel key={recordingOpen} recorder={recorder} saving={saving} saveError={saveError} onRetry={retrySaved} onRecovered={() => { void run({ kind: "load" }).then(data => { if (data) { observedRecording.current = null; setDialog(null); navigate("notes"); notify("Recovery checked. Saved meetings are available in Note Taker."); } }); }} />}
+      {dialog.kind === "record" && <RecordingPanel key={recordingOpen} recorder={recorder} saving={saving} saveError={saveError} onRetry={retrySaved} onRecovered={onRecovered} />}
       </fieldset>
     </Modal>}
     <div role="status" aria-live="polite">{toast && <div className="toast" key={toast.id}>{toast.text}</div>}</div>
