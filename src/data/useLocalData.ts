@@ -21,5 +21,6 @@ export function useLocalData() {
     } finally { pending.current = false; setBusy(false); }
   }, []);
   useEffect(() => { void run({ kind: "load" }); }, [run]);
-  return { ...data, ready, busy, error, run };
+  const complete = (key: string, value: boolean) => { void run({ kind: "complete", key, value }); };
+  return { ...data, ready, busy, error, run, complete };
 }
