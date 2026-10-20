@@ -96,6 +96,7 @@ export function App() {
   useEffect(() => {
     if (previousView.current && previousView.current !== viewKey) {
       window.scrollTo(0, 0);
+      document.getElementById("view")?.scrollTo(0, 0);
       const heading = document.querySelector<HTMLElement>("#view h1");
       heading?.setAttribute("tabindex", "-1"); heading?.focus({ preventScroll: true });
     }

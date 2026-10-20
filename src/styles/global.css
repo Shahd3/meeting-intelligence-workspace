@@ -12,6 +12,8 @@
   box-sizing:border-box
 }
 body {
+  height:100dvh;
+  overflow:hidden;
   margin:0;
   background:#e9eadf;
   color:var(--ink);
@@ -60,7 +62,8 @@ small,.muted {
   gap:30px;
   max-width:1600px;
   margin:auto;
-  min-height:100vh
+  height:100dvh;
+  min-height:0
 }
 aside {
   width:184px;
@@ -144,13 +147,23 @@ aside .eyebrow {
 .content {
   flex:1;
   min-width:0;
+  display:flex;
+  flex-direction:column;
+  min-height:0;
   padding:12px 18px 15px 0
 }
 .topbar {
   display:flex;
   align-items:center;
   justify-content:space-between;
-  margin-bottom:35px
+  margin-bottom:35px;
+  flex:0 0 auto
+}
+#view {
+  flex:1;
+  min-height:0;
+  overflow:auto;
+  scrollbar-width:thin
 }
 .topright {
   display:flex;
@@ -394,11 +407,12 @@ aside .eyebrow {
   background:var(--cream);
   border:1px solid var(--line);
   border-radius:23px;
-  padding:23px;
+  padding:26px;
   text-align:left;
   display:flex;
   flex-direction:column;
-  min-height:218px
+  gap:14px;
+  min-height:190px
 }
 .card h3 {
   font-size:22px;
@@ -440,7 +454,7 @@ aside .eyebrow {
   display:flex;
   align-items:center;
   gap:16px;
-  margin-bottom:25px
+  margin-bottom:14px
 }
 .detail-heading h1 {
   font-size:35px;
@@ -477,8 +491,7 @@ aside .eyebrow {
   margin-top:10px
 }
 .transcript {
-  max-height:440px;
-  overflow:auto
+  /* no inner scroll — the details panel scrolls as a whole */
 }
 .speech {
   display:grid;
@@ -757,7 +770,8 @@ body.dashboard {
   display:flex;
   flex-direction:column;
   flex:1;
-  min-height:0
+  min-height:0;
+  overflow:hidden
 }
 .dashboard .heading {
   flex:0 0 auto;
@@ -1067,7 +1081,15 @@ nav {
   font-weight:500;
   letter-spacing:-.5px;
   line-height:1.3;
-  margin:20px 0 12px
+  margin:0
+}
+.card-meta {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  margin-top:auto;
+  color:var(--muted);
+  font-size:12px
 }
 .project-title {
   font-size:28px;
@@ -1132,7 +1154,8 @@ nav {
   display:flex;
   gap:10px;
   align-items:center;
-  flex-wrap:wrap
+  flex-wrap:wrap;
+  margin-bottom:16px
 }
 .meeting-panel {
   min-height:380px
@@ -1536,3 +1559,55 @@ body.widget-window { background: var(--cream); overflow: hidden; }
 .card-heading .card-title { flex: 1; min-width: 120px; margin-block: 0; order: 0; overflow-wrap: anywhere; }
 .card-heading .meeting-status { order: 1; margin-block: 0; align-self: center; }
 @media (max-width: 760px) { .row { flex-wrap: wrap; } .row .meeting-status { max-width: 100%; white-space: normal; } }
+/* Colored subsections group each part of the meeting notes. */
+.meeting-panel .subsection { border-radius:18px; padding:18px 20px; margin-block:14px; }
+.meeting-panel .subsection h3 { margin:0 0 12px; font-size:16px; font-weight:600; letter-spacing:0; }
+.meeting-panel .subsection .intelligence-fact { margin-block:0 10px; }
+.meeting-panel .subsection .intelligence-fact:last-child { margin-bottom:0; }
+.meeting-panel .subsection .intelligence-topic { border-bottom:1px solid #00000016; }
+.meeting-panel .subsection .participants { margin-top:0; }
+/* Note Taker: fixed heading/toolbar, scrollable card grid. */
+.notetaker-page { display:flex; flex-direction:column; height:100%; min-height:0; }
+.notetaker-page .heading, .notetaker-page .toolbar, .notetaker-page .section { flex:0 0 auto; }
+.notetaker-page .library { flex:1; min-height:0; overflow:auto; scrollbar-width:thin; align-content:start; }
+/* Edit icon (pen) beside delete; attendee avatars grouped in a stack. */
+.edit-icon { display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; flex-shrink:0; border-radius:12px; background:var(--cream); color:var(--ink); border:1px solid var(--line); cursor:pointer; }
+.edit-icon:hover { background:var(--sage); }
+.record-tools { display:flex; gap:8px; align-items:center; margin-inline-start:auto; }
+.record-tools .delete-icon { margin-inline-start:0; }
+.avatar-stack { display:flex; align-items:center; flex-wrap:wrap; }
+.attendee-avatar { display:grid; place-items:center; width:38px; height:38px; border-radius:50%; border:2px solid var(--cream); font-size:12px; font-weight:600; color:#47433f; background:var(--lav); }
+.attendee-avatar + .attendee-avatar { margin-inline-start:-10px; }
+.attendee-avatar:nth-child(4n+1) { background:var(--lav); }
+.attendee-avatar:nth-child(4n+2) { background:var(--sage); }
+.attendee-avatar:nth-child(4n+3) { background:var(--pink); }
+.attendee-avatar:nth-child(4n+4) { background:var(--yellow); }
+.attendee-avatar.more { background:var(--cream); border:1px dashed var(--muted); color:var(--muted); font-size:11px; }
+/* Collapsible meeting-panel sections: consistent heading + clean bullets. */
+.meeting-panel details > summary { cursor:pointer; list-style:none; font-size:16px; font-weight:600; letter-spacing:0; margin:0 0 12px; }
+.meeting-panel details > summary::-webkit-details-marker { display:none; }
+.meeting-panel details > summary::before { content:"\25BE\00A0"; }
+.meeting-panel details:not([open]) > summary::before { content:"\25B8\00A0"; }
+.meeting-panel .points-list { margin:0; padding-inline-start:20px; }
+.meeting-panel .points-list li { margin-block:6px; }
+.meeting-panel .points-list li .prose { line-height:1.7; }
+/* Meeting detail header: compact meta. */
+.detail-date { display:block; margin-top:4px; font-size:12px; }
+.open-workspace { display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; border-radius:12px; background:var(--cream); border:1px solid var(--line); font-size:15px; }
+.open-workspace:hover { background:var(--sage); }
+.back-button { margin-bottom:12px; }
+/* Fixed-header pages: header stays put, body scrolls. */
+.detail-page { display:flex; flex-direction:column; height:100%; min-height:0; }
+.detail-header { flex:0 0 auto; }
+.detail-page .detail-scroll { flex:1; min-height:0; overflow:auto; scrollbar-width:thin; }
+.detail-page .demo-caption { flex:0 0 auto; }
+.workspace-page { display:flex; flex-direction:column; height:100%; min-height:0; }
+.workspace-header { flex:0 0 auto; }
+.workspace-page .project-layout { flex:1; min-height:0; grid-template-rows:minmax(0,1fr); }
+.workspace-main { min-height:0; overflow:auto; scrollbar-width:thin; }
+.workspace-page .assistant { height:auto; position:static; min-height:0; }
+@media(max-width:800px) {
+  .detail-page, .workspace-page { height:auto; }
+  .detail-page .detail-scroll, .workspace-main { overflow:visible; }
+  .workspace-page .project-layout { flex:none; grid-template-rows:none; }
+}
